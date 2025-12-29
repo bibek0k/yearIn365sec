@@ -137,7 +137,7 @@
     <header class="w-full max-w-md p-6 pb-2 flex flex-col gap-4">
         <div class="flex justify-between items-center">
             <div>
-                <h1 class="text-2xl font-bold tracking-tight">My Year</h1>
+                <h1 class="text-2xl font-bold tracking-tight">Our Year</h1>
                 <p class="text-slate-400 text-sm" id="dateDisplay">Loading...</p>
             </div>
             <!-- Mode Toggle -->
@@ -734,11 +734,11 @@
         });
 
         async function runFFmpeg(clips) {
-            const { FFmpeg } = FFmpegWASM;
+            const { FFmpeg } = FFmpeg;
             const { fetchFile } = FFmpegUtil;
             if (!APP.ffmpeg) {
                 APP.ffmpeg = new FFmpeg();
-                await APP.ffmpeg.load({ coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js' });
+                await APP.ffmpeg.load({ coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.7/dist/ffmpeg-core.js' });
             }
             
             clips.sort((a, b) => a.date.localeCompare(b.date));
