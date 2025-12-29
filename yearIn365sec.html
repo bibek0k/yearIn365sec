@@ -378,90 +378,26 @@
 
         // --- 4. CAMERA & RECORDING ---
 
-        // Helper: Ensure HTTPS or Localhost
-        function checkSecureContext() {
-            if (!window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-                alert("Security Restriction: Camera access requires HTTPS. Please serve this app over HTTPS or use localhost.");
-                return false;
-            }
-            return true;
-        }
-
-        // Helper: Handle specific camera errors
-        function handleCameraError(err) {
-            console.error("Camera Error:", err);
-            let msg = "Camera access denied or failed.";
-            
-            switch(err.name) {
-                case 'NotAllowedError':
-                case 'PermissionDeniedError':
-                    msg = "Permission denied. Please allow camera access in your browser settings and refresh.";
-                    break;
-                case 'NotFoundError':
-                case 'DevicesNotFoundError':
-                    msg = "No camera hardware found.";
-                    break;
-                case 'NotReadableError':
-                case 'TrackStartError':
-                    msg = "Camera is currently in use by another application.";
-                    break;
-                case 'OverconstrainedError':
-                    msg = "Your camera doesn't support the requested resolution. Retrying with defaults...";
-                    break;
-                default:
-                    msg = `Camera error: ${err.message}`;
-            }
-            alert(msg);
-            DOM.statusText.textContent = "Camera Error. Check permissions.";
-        }
-
-        // Helper: Success state setup
-        function setupCameraSuccess() {
-            const track = APP.cameraStream.getVideoTracks()[0];
-            console.log("Camera started:", track.label);
-            
-            DOM.cameraPreview.srcObject = APP.cameraStream;
-            DOM.cameraPreview.classList.remove('hidden');
-            DOM.playbackPreview.classList.add('hidden');
-            DOM.startOverlay.classList.add('opacity-0', 'pointer-events-none');
-            DOM.recordControls.classList.remove('hidden');
-            DOM.statusText.textContent = "Hold steady...";
-        }
-
         DOM.btnInit.addEventListener('click', async () => {
-            if (!checkSecureContext()) return;
-            
-            DOM.statusText.textContent = "Requesting camera...";
-
-            // 1. Try Ideal Mobile Constraints (Front Camera)
-            // We relaxed constraints to prevent OverconstrainedError on some Androids
-            const constraints = { 
-                audio: true,
-                video: { 
-                    facingMode: 'user',
-                    // Removing strict width/height to allow browser to choose native resolution
-                    // We rely on CSS object-fit: cover for the aspect ratio
-                } 
-            };
-
             try {
-                APP.cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
-                setupCameraSuccess();
-            } catch (err) {
-                console.warn("Primary constraint failed:", err.name);
+                APP.cameraStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: "user", // Default to selfie camera
+                        aspectRatio: { ideal: 9/16 }, // Portrait preference
+                        width: { ideal: 720 }
+                    }, 
+                    audio: true 
+                });
                 
-                // 2. Fallback: Generic constraints (Environment/Back camera or just 'any' video)
-                if (err.name === 'OverconstrainedError' || err.name === 'NotFoundError') {
-                    try {
-                        console.log("Attempting fallback camera...");
-                        APP.cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                        setupCameraSuccess();
-                    } catch (fallbackErr) {
-                        handleCameraError(fallbackErr);
-                    }
-                } else {
-                    handleCameraError(err);
-                }
+                DOM.cameraPreview.srcObject = APP.cameraStream;
+                DOM.cameraPreview.classList.remove('hidden');
+                DOM.playbackPreview.classList.add('hidden');
+                DOM.startOverlay.classList.add('opacity-0', 'pointer-events-none');
+                DOM.recordControls.classList.remove('hidden');
+                DOM.statusText.textContent = "Hold steady...";
+            } catch (err) {
+                alert("Camera access denied or unavailable.");
+                console.error(err);
             }
         });
 
@@ -472,44 +408,26 @@
             
             // UX Updates
             DOM.btnRecord.disabled = true;
-            DOM.recIcon.classList.replace('rounded-sm', 'rounded-full');
+            DOM.recIcon.classList.replace('rounded-sm', 'rounded-full'); // change to circle
             DOM.recIcon.classList.add('animate-pulse');
             DOM.statusText.textContent = "Recording...";
 
             APP.recordedChunks = [];
             
-            // Mobile-Friendly MIME Type Detection
-            // Android often prefers VP8. Desktop prefers VP9.
-            const mimeOptions = [
-                "video/webm;codecs=vp8", // Best for Android
-                "video/webm;codecs=vp9", // Best for Desktop
-                "video/webm",            // Generic
-                "video/mp4"              // Safari / fallback
-            ];
+            // Init MediaRecorder
+            // Try different mime types for browser compatibility
+            const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9") 
+                ? "video/webm;codecs=vp9" 
+                : "video/webm";
 
-            const selectedMime = mimeOptions.find(type => MediaRecorder.isTypeSupported(type));
-
-            if (!selectedMime) {
-                alert("Your browser does not support compatible video recording (WebM/MP4).");
-                return;
-            }
-
-            console.log("Using MIME:", selectedMime);
-
-            try {
-                APP.mediaRecorder = new MediaRecorder(APP.cameraStream, { mimeType: selectedMime });
-            } catch (e) {
-                console.error("MediaRecorder init failed:", e);
-                alert("Recorder Error: " + e.message);
-                return;
-            }
+            APP.mediaRecorder = new MediaRecorder(APP.cameraStream, { mimeType });
 
             APP.mediaRecorder.ondataavailable = (e) => {
                 if (e.data.size > 0) APP.recordedChunks.push(e.data);
             };
 
             APP.mediaRecorder.onstop = async () => {
-                const blob = new Blob(APP.recordedChunks, { type: selectedMime.split(';')[0] });
+                const blob = new Blob(APP.recordedChunks, { type: 'video/webm' });
                 await handleRecordingComplete(blob);
             };
 
