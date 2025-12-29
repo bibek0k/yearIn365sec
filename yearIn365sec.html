@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>1 Second A Day</title>
+    
+    <!-- Tailwind CSS (via CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FFmpeg WASM (via CDN) -->
+    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.7/dist/umd/ffmpeg.js"></script>
+    <script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
+
+    <!-- Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        /* Custom aesthetics for a premium, emotional feel */
+        :root {
+            --primary: #e11d48; /* Rose-600 */
+            --bg: #0f172a; /* Slate-900 */
+            --surface: #1e293b; /* Slate-800 */
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            overscroll-behavior-y: none; /* Prevent pull-to-refresh on mobile */
+        }
+
+        /* Smooth recording progress ring */
+        .progress-ring__circle {
+            transition: stroke-dashoffset 0.1s linear;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+
+        /* Camera aspect ratio container */
+        .camera-container {
+            position: relative;
+            width: 100%;
+            padding-top: 177.77%; /* 9:16 Aspect Ratio (Vertical Video) */
+            background: #000;
+            border-radius: 1rem;
+            overflow: hidden;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+        }
+
+        .camera-feed {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Calendar Grid */
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+            gap: 0.5rem;
+        }
+
+        .day-cell {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--surface);
+            border-radius: 0.5rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .day-cell.filled {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 0 10px rgba(225, 29, 72, 0.4);
+        }
+
+        .day-cell.today {
+            border: 2px solid var(--primary);
+        }
+
+        /* Hidden inputs */
+        input[type="file"] {
+            display: none;
+        }
+
+        /* Mobile safe area padding */
+        .safe-pb {
+            padding-bottom: env(safe-area-inset-bottom, 20px);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center safe-pb">
+
+    <!-- Header -->
+    <header class="w-full max-w-md p-6 flex justify-between items-end">
+        <div>
+            <h1 class="text-2xl font-bold tracking-tight">Our Year</h1>
+            <p class="text-slate-400 text-sm" id="dateDisplay">Loading date...</p>
+        </div>
+        <div class="text-right">
+            <div class="text-3xl font-light text-rose-500" id="dayCount">0</div>
+            <div class="text-xs text-slate-500 uppercase tracking-wider">Days Captured</div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="w-full max-w-md flex-1 px-4 flex flex-col gap-6">
+
+        <!-- Recorder Section -->
+        <div id="recorderSection" class="relative">
+            
+            <!-- Camera / Preview -->
+            <div class="camera-container">
+                <video id="cameraPreview" autoplay playsinline muted class="camera-feed hidden"></video>
+                <video id="playbackPreview" playsinline loop class="camera-feed hidden"></video>
+                
+                <!-- Overlay State: Start Screen -->
+                <div id="startOverlay" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/50 backdrop-blur-sm z-10 transition-opacity">
+                    <button id="btnInitCamera" class="bg-rose-600 hover:bg-rose-700 text-white rounded-full p-6 shadow-lg transform transition active:scale-95">
+                        <i data-lucide="camera" class="w-8 h-8"></i>
+                    </button>
+                    <p class="mt-4 text-sm font-medium text-white/90">Tap to Start Camera</p>
+                </div>
+
+                <!-- Overlay State: Done for Today -->
+                <div id="doneOverlay" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 z-20">
+                    <div class="bg-green-500/20 text-green-400 p-4 rounded-full mb-4">
+                        <i data-lucide="check" class="w-8 h-8"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-white">Today is captured!</h3>
+                    <p class="text-slate-400 text-sm mt-2">See you tomorrow.</p>
+                    <button id="btnRetake" class="mt-6 text-sm text-slate-500 underline decoration-slate-700 underline-offset-4">Retake (Overwrites Clip)</button>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div class="mt-6 flex items-center justify-center relative h-24">
+                
+                <!-- Recording Button with Progress Ring -->
+                <div id="recordControls" class="relative hidden">
+                    <svg class="progress-ring w-20 h-20" viewBox="0 0 100 100">
+                        <circle class="text-slate-700" stroke="currentColor" stroke-width="4" fill="transparent" r="45" cx="50" cy="50"/>
+                        <circle id="progressCircle" class="progress-ring__circle text-rose-500" stroke="currentColor" stroke-width="4" fill="transparent" r="45" cx="50" cy="50" stroke-dasharray="282.74" stroke-dashoffset="282.74"/>
+                    </svg>
+                    
+                    <button id="btnRecord" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-rose-600 rounded-full border-4 border-slate-900 shadow-xl active:scale-90 transition-transform flex items-center justify-center">
+                        <div id="recIcon" class="w-6 h-6 bg-white rounded-sm"></div>
+                    </button>
+                </div>
+
+                <!-- Status Text -->
+                <p id="statusText" class="absolute -bottom-2 text-xs text-slate-500 font-mono">Ready to record 1s</p>
+            </div>
+        </div>
+
+        <!-- Tools / Stats -->
+        <div class="bg-slate-800 rounded-xl p-4">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-widest">History</h2>
+                <div class="flex gap-2">
+                    <button id="btnCompile" class="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-md flex items-center gap-2 transition-colors">
+                        <i data-lucide="film" class="w-3 h-3"></i> Compile
+                    </button>
+                    <button id="btnBackup" class="text-xs bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded-md flex items-center gap-2 transition-colors">
+                        <i data-lucide="download" class="w-3 h-3"></i> Backup
+                    </button>
+                </div>
+            </div>
+            
+            <div id="calendarGrid" class="calendar-grid max-h-48 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-600">
+                <!-- Days injected by JS -->
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Compilation Modal -->
+    <div id="compileModal" class="fixed inset-0 bg-slate-950/90 z-50 hidden flex-col items-center justify-center p-6 text-center">
+        <div class="max-w-sm w-full bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-2xl">
+            <h3 class="text-xl font-bold mb-2">Compiling Movie</h3>
+            <p class="text-slate-400 text-sm mb-6">Stitching your seconds together. This runs locally on your device.</p>
+            
+            <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden mb-2">
+                <div id="compileProgress" class="bg-rose-600 h-full w-0 transition-all duration-300"></div>
+            </div>
+            <p id="compileLog" class="text-xs text-slate-500 font-mono mb-6">Initializing ffmpeg...</p>
+            
+            <button id="btnCloseModal" class="hidden w-full bg-slate-800 text-white py-3 rounded-lg">Close</button>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script>
+        // --- 1. CONFIGURATION & STATE ---
+        lucide.createIcons();
+
+        const APP = {
+            dbName: 'OneSecondADayDB',
+            storeName: 'clips',
+            version: 1,
+            db: null,
+            today: new Date().toISOString().split('T')[0],
+            mediaRecorder: null,
+            recordedChunks: [],
+            cameraStream: null,
+            ffmpeg: null
+        };
+
+        const DOM = {
+            dateDisplay: document.getElementById('dateDisplay'),
+            dayCount: document.getElementById('dayCount'),
+            cameraPreview: document.getElementById('cameraPreview'),
+            playbackPreview: document.getElementById('playbackPreview'),
+            btnInit: document.getElementById('btnInitCamera'),
+            btnRecord: document.getElementById('btnRecord'),
+            btnRetake: document.getElementById('btnRetake'),
+            btnCompile: document.getElementById('btnCompile'),
+            btnBackup: document.getElementById('btnBackup'),
+            startOverlay: document.getElementById('startOverlay'),
+            doneOverlay: document.getElementById('doneOverlay'),
+            recordControls: document.getElementById('recordControls'),
+            progressCircle: document.getElementById('progressCircle'),
+            calendarGrid: document.getElementById('calendarGrid'),
+            statusText: document.getElementById('statusText'),
+            recIcon: document.getElementById('recIcon'),
+            compileModal: document.getElementById('compileModal'),
+            compileProgress: document.getElementById('compileProgress'),
+            compileLog: document.getElementById('compileLog'),
+            btnCloseModal: document.getElementById('btnCloseModal')
+        };
+
+        // Initialize UI Date
+        const dateObj = new Date();
+        DOM.dateDisplay.textContent = dateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+        // --- 2. DATABASE LAYER (IndexedDB) ---
+        
+        async function initDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(APP.dbName, APP.version);
+                
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains(APP.storeName)) {
+                        db.createObjectStore(APP.storeName, { keyPath: 'date' });
+                    }
+                };
+
+                request.onsuccess = (e) => {
+                    APP.db = e.target.result;
+                    resolve(APP.db);
+                };
+                
+                request.onerror = (e) => reject(e);
+            });
+        }
+
+        async function saveClip(date, blob) {
+            return new Promise((resolve, reject) => {
+                const tx = APP.db.transaction(APP.storeName, 'readwrite');
+                const store = tx.objectStore(APP.storeName);
+                const item = {
+                    date: date,
+                    blob: blob,
+                    timestamp: Date.now()
+                };
+                store.put(item);
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+            });
+        }
+
+        async function getClip(date) {
+            return new Promise((resolve) => {
+                const tx = APP.db.transaction(APP.storeName, 'readonly');
+                const store = tx.objectStore(APP.storeName);
+                const req = store.get(date);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => resolve(null);
+            });
+        }
+
+        async function getAllClips() {
+            return new Promise((resolve) => {
+                const tx = APP.db.transaction(APP.storeName, 'readonly');
+                const store = tx.objectStore(APP.storeName);
+                const req = store.getAll();
+                req.onsuccess = () => resolve(req.result);
+            });
+        }
+
+        // --- 3. CORE LOGIC ---
+
+        async function initApp() {
+            try {
+                await initDB();
+                await renderCalendar();
+                await checkTodayStatus();
+                
+                // Attempt to register dummy Service Worker for persistence help
+                registerServiceWorker();
+            } catch (err) {
+                console.error("Initialization Failed:", err);
+                DOM.statusText.textContent = "Error loading database.";
+            }
+        }
+
+        async function renderCalendar() {
+            const clips = await getAllClips();
+            DOM.dayCount.textContent = clips.length;
+            
+            // Generate grid for visual feedback (last 30 days + simple view)
+            DOM.calendarGrid.innerHTML = '';
+            
+            // Create a map of existing clips
+            const clipMap = new Set(clips.map(c => c.date));
+            
+            // Generate pseudo-calendar for display (just simple boxes for now)
+            // In a real year-long app, we might just show the current month or a list
+            // For this MVP, we show a grid of 365 days, highlighting filled ones
+            
+            // Logic: Generate grid for the current year up to today? 
+            // Let's just show a grid of 30 items for visual reference or "All recorded items"
+            // To make it look cool, let's show recorded days + placeholders for today
+            
+            // Better UX: Show a grid representing the year, but just small dots
+            // Let's create 60 slots (2 months) for demo visualization
+            
+            const totalSlots = 60; 
+            const recordedDates = clips.map(c => c.date).sort();
+            
+            // We'll just render the recorded clips and placeholders
+            for (let i = 0; i < totalSlots; i++) {
+                const el = document.createElement('div');
+                el.className = 'day-cell';
+                
+                // If we have a recording for this relative index? 
+                // Since mapping 1-365 is hard without specific year context, 
+                // we will map the grid to actual recorded days + empty slots for "future/missed"
+                // Simplified: Just show recorded days in green.
+                
+                if (i < recordedDates.length) {
+                    el.classList.add('filled');
+                    const dayNum = recordedDates[i].split('-')[2];
+                    el.textContent = dayNum;
+                    el.title = recordedDates[i];
+                    
+                    // Click to preview (simple feature)
+                    el.onclick = () => previewClip(recordedDates[i]);
+                } else {
+                    el.textContent = '•';
+                }
+                
+                DOM.calendarGrid.appendChild(el);
+            }
+        }
+
+        async function checkTodayStatus() {
+            const todayClip = await getClip(APP.today);
+            if (todayClip) {
+                showDoneState(todayClip.blob);
+            } else {
+                showReadyState();
+            }
+        }
+
+        // --- 4. CAMERA & RECORDING ---
+
+        // Helper: Ensure HTTPS or Localhost
+        function checkSecureContext() {
+            if (!window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+                alert("Security Restriction: Camera access requires HTTPS. Please serve this app over HTTPS or use localhost.");
+                return false;
+            }
+            return true;
+        }
+
+        // Helper: Handle specific camera errors
+        function handleCameraError(err) {
+            console.error("Camera Error:", err);
+            let msg = "Camera access denied or failed.";
+            
+            switch(err.name) {
+                case 'NotAllowedError':
+                case 'PermissionDeniedError':
+                    msg = "Permission denied. Please allow camera access in your browser settings and refresh.";
+                    break;
+                case 'NotFoundError':
+                case 'DevicesNotFoundError':
+                    msg = "No camera hardware found.";
+                    break;
+                case 'NotReadableError':
+                case 'TrackStartError':
+                    msg = "Camera is currently in use by another application.";
+                    break;
+                case 'OverconstrainedError':
+                    msg = "Your camera doesn't support the requested resolution. Retrying with defaults...";
+                    break;
+                default:
+                    msg = `Camera error: ${err.message}`;
+            }
+            alert(msg);
+            DOM.statusText.textContent = "Camera Error. Check permissions.";
+        }
+
+        // Helper: Success state setup
+        function setupCameraSuccess() {
+            const track = APP.cameraStream.getVideoTracks()[0];
+            console.log("Camera started:", track.label);
+            
+            DOM.cameraPreview.srcObject = APP.cameraStream;
+            DOM.cameraPreview.classList.remove('hidden');
+            DOM.playbackPreview.classList.add('hidden');
+            DOM.startOverlay.classList.add('opacity-0', 'pointer-events-none');
+            DOM.recordControls.classList.remove('hidden');
+            DOM.statusText.textContent = "Hold steady...";
+        }
+
+        DOM.btnInit.addEventListener('click', async () => {
+            if (!checkSecureContext()) return;
+            
+            DOM.statusText.textContent = "Requesting camera...";
+
+            // 1. Try Ideal Mobile Constraints (Front Camera)
+            // We relaxed constraints to prevent OverconstrainedError on some Androids
+            const constraints = { 
+                audio: true,
+                video: { 
+                    facingMode: 'user',
+                    // Removing strict width/height to allow browser to choose native resolution
+                    // We rely on CSS object-fit: cover for the aspect ratio
+                } 
+            };
+
+            try {
+                APP.cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+                setupCameraSuccess();
+            } catch (err) {
+                console.warn("Primary constraint failed:", err.name);
+                
+                // 2. Fallback: Generic constraints (Environment/Back camera or just 'any' video)
+                if (err.name === 'OverconstrainedError' || err.name === 'NotFoundError') {
+                    try {
+                        console.log("Attempting fallback camera...");
+                        APP.cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                        setupCameraSuccess();
+                    } catch (fallbackErr) {
+                        handleCameraError(fallbackErr);
+                    }
+                } else {
+                    handleCameraError(err);
+                }
+            }
+        });
+
+        DOM.btnRecord.addEventListener('click', startRecording);
+
+        function startRecording() {
+            if (!APP.cameraStream) return;
+            
+            // UX Updates
+            DOM.btnRecord.disabled = true;
+            DOM.recIcon.classList.replace('rounded-sm', 'rounded-full');
+            DOM.recIcon.classList.add('animate-pulse');
+            DOM.statusText.textContent = "Recording...";
+
+            APP.recordedChunks = [];
+            
+            // Mobile-Friendly MIME Type Detection
+            // Android often prefers VP8. Desktop prefers VP9.
+            const mimeOptions = [
+                "video/webm;codecs=vp8", // Best for Android
+                "video/webm;codecs=vp9", // Best for Desktop
+                "video/webm",            // Generic
+                "video/mp4"              // Safari / fallback
+            ];
+
+            const selectedMime = mimeOptions.find(type => MediaRecorder.isTypeSupported(type));
+
+            if (!selectedMime) {
+                alert("Your browser does not support compatible video recording (WebM/MP4).");
+                return;
+            }
+
+            console.log("Using MIME:", selectedMime);
+
+            try {
+                APP.mediaRecorder = new MediaRecorder(APP.cameraStream, { mimeType: selectedMime });
+            } catch (e) {
+                console.error("MediaRecorder init failed:", e);
+                alert("Recorder Error: " + e.message);
+                return;
+            }
+
+            APP.mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) APP.recordedChunks.push(e.data);
+            };
+
+            APP.mediaRecorder.onstop = async () => {
+                const blob = new Blob(APP.recordedChunks, { type: selectedMime.split(';')[0] });
+                await handleRecordingComplete(blob);
+            };
+
+            // Start Recording
+            APP.mediaRecorder.start();
+            
+            // Animate Ring (1s duration)
+            const circumference = 45 * 2 * Math.PI;
+            DOM.progressCircle.style.strokeDashoffset = circumference; // Reset
+            
+            // Trigger animation frame next tick
+            requestAnimationFrame(() => {
+                DOM.progressCircle.style.transition = 'stroke-dashoffset 1s linear';
+                DOM.progressCircle.style.strokeDashoffset = '0';
+            });
+
+            // Hard stop after exactly 1000ms
+            setTimeout(() => {
+                if (APP.mediaRecorder.state === 'recording') {
+                    APP.mediaRecorder.stop();
+                }
+            }, 1000);
+        }
+
+        async function handleRecordingComplete(blob) {
+            // Save to DB
+            await saveClip(APP.today, blob);
+            
+            // Auto-Download for physical backup (Crucial req)
+            downloadFile(blob, `osad-${APP.today}.webm`);
+            
+            // Refresh UI
+            await renderCalendar();
+            showDoneState(blob);
+        }
+
+        function showDoneState(blob) {
+            // Stop camera to save battery
+            if (APP.cameraStream) {
+                // Keep stream active if they want to retake immediately? 
+                // No, better to pause. But for simplicity, we keep running or just hide.
+                // Let's show playback.
+            }
+            
+            const url = URL.createObjectURL(blob);
+            DOM.playbackPreview.src = url;
+            DOM.playbackPreview.classList.remove('hidden');
+            DOM.cameraPreview.classList.add('hidden');
+            
+            DOM.doneOverlay.classList.remove('hidden');
+            DOM.recordControls.classList.add('hidden');
+            DOM.statusText.textContent = "Saved to device.";
+        }
+
+        function showReadyState() {
+            DOM.doneOverlay.classList.add('hidden');
+            DOM.playbackPreview.classList.add('hidden');
+            DOM.playbackPreview.pause();
+            DOM.cameraPreview.classList.remove('hidden');
+            
+            // Reset Controls
+            DOM.recordControls.classList.remove('hidden'); // Only if camera started?
+            if(!APP.cameraStream) DOM.recordControls.classList.add('hidden');
+            
+            DOM.progressCircle.style.transition = 'none';
+            DOM.progressCircle.style.strokeDashoffset = 45 * 2 * Math.PI; // Reset ring
+            DOM.btnRecord.disabled = false;
+            DOM.recIcon.classList.replace('rounded-full', 'rounded-sm');
+            DOM.recIcon.classList.remove('animate-pulse');
+        }
+
+        DOM.btnRetake.addEventListener('click', () => {
+            // Logic to clear today's clip? Or just overwrite?
+            // "Overwrite" is handled by saveClip using the same key (date).
+            showReadyState();
+            // Ensure controls are visible if camera is active
+            if(APP.cameraStream) {
+                DOM.recordControls.classList.remove('hidden');
+                DOM.startOverlay.classList.add('opacity-0', 'pointer-events-none');
+            } else {
+                DOM.startOverlay.classList.remove('opacity-0', 'pointer-events-none');
+            }
+        });
+
+        async function previewClip(date) {
+            const clip = await getClip(date);
+            if(clip) {
+                const url = URL.createObjectURL(clip.blob);
+                const win = window.open(url, '_blank');
+                if(!win) alert("Please allow popups to view clips");
+            }
+        }
+
+        // --- 5. COMPILATION (FFMPEG.WASM) ---
+
+        DOM.btnCompile.addEventListener('click', async () => {
+            const clips = await getAllClips();
+            if (clips.length < 2) {
+                alert("You need at least 2 days of clips to compile a video!");
+                return;
+            }
+            
+            DOM.compileModal.classList.remove('hidden');
+            DOM.compileModal.classList.add('flex');
+            
+            try {
+                await runFFmpeg(clips);
+            } catch (err) {
+                console.error(err);
+                DOM.compileLog.innerHTML = `<span class="text-red-400">Error: ${err.message}<br>Note: This feature requires a secure context (HTTPS) and COOP/COEP headers.</span>`;
+                DOM.btnCloseModal.classList.remove('hidden');
+            }
+        });
+
+        DOM.btnCloseModal.addEventListener('click', () => {
+            DOM.compileModal.classList.add('hidden');
+            DOM.compileModal.classList.remove('flex');
+        });
+
+        async function runFFmpeg(clips) {
+            const { FFmpeg } = FFmpegWASM;
+            const { fetchFile } = FFmpegUtil;
+            
+            if (!APP.ffmpeg) {
+                APP.ffmpeg = new FFmpeg();
+                DOM.compileLog.textContent = "Loading engine...";
+                
+                APP.ffmpeg.on('log', ({ message }) => {
+                    console.log(message);
+                    // Filter logs for cleaner UI
+                    if(message.includes('frame=')) DOM.compileLog.textContent = "Processing frames...";
+                });
+
+                APP.ffmpeg.on('progress', ({ progress }) => {
+                    DOM.compileProgress.style.width = `${progress * 100}%`;
+                });
+
+                // Load ffmpeg.wasm from CDN
+                // Note: coreURL matches the version imported in <head>
+                await APP.ffmpeg.load({
+                    coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/ffmpeg-core.js',
+                });
+            }
+
+            DOM.compileLog.textContent = "Preparing files...";
+            
+            // 1. Sort clips by date
+            clips.sort((a, b) => a.date.localeCompare(b.date));
+
+            // 2. Write files to memory
+            let fileListContent = '';
+            for (let i = 0; i < clips.length; i++) {
+                const fileName = `clip${i}.webm`;
+                await APP.ffmpeg.writeFile(fileName, await fetchFile(clips[i].blob));
+                fileListContent += `file '${fileName}'\n`;
+            }
+
+            await APP.ffmpeg.writeFile('files.txt', fileListContent);
+
+            DOM.compileLog.textContent = "Stitching video...";
+            
+            // 3. Concatenate
+            // -f concat: use concat demuxer
+            // -safe 0: allow unsafe filenames
+            // -c copy: stream copy (super fast, no re-encoding)
+            // Note: If clips have different parameters (resolution), this might fail.
+            // Ideally we re-encode, but that is slow in WASM. We try copy first.
+            try {
+                await APP.ffmpeg.exec(['-f', 'concat', '-safe', '0', '-i', 'files.txt', '-c', 'copy', 'output.webm']);
+            } catch (e) {
+                DOM.compileLog.textContent = "Fast stitch failed. Re-encoding (Slower)...";
+                // Fallback to re-encoding if copy fails (e.g. slight diff in resolution)
+                await APP.ffmpeg.exec(['-f', 'concat', '-safe', '0', '-i', 'files.txt', 'output.webm']);
+            }
+
+            DOM.compileLog.textContent = "Finalizing...";
+            
+            // 4. Read result
+            const data = await APP.ffmpeg.readFile('output.webm');
+            const finalBlob = new Blob([data.buffer], { type: 'video/webm' });
+            
+            // 5. Download
+            downloadFile(finalBlob, `OurYear_Compiled_${APP.today}.webm`);
+            
+            DOM.compileLog.textContent = "Done! Video downloaded.";
+            DOM.compileProgress.style.width = '100%';
+            DOM.btnCloseModal.classList.remove('hidden');
+        }
+
+        // --- 6. UTILS ---
+
+        function downloadFile(blob, filename) {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        function registerServiceWorker() {
+            // Basic PWA Service Worker to cache the app itself
+            if ('serviceWorker' in navigator) {
+                const swCode = `
+                    const CACHE_NAME = 'osad-cache-v1';
+                    self.addEventListener('install', e => e.waitUntil(self.skipWaiting()));
+                    self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+                    self.addEventListener('fetch', e => {
+                        e.respondWith(
+                            fetch(e.request).catch(() => caches.match(e.request))
+                        );
+                    });
+                `;
+                const blob = new Blob([swCode], {type: 'application/javascript'});
+                const url = URL.createObjectURL(blob);
+                navigator.serviceWorker.register(url)
+                    .then(() => console.log('SW Registered'))
+                    .catch(err => console.log('SW Error:', err));
+            }
+        }
+
+        DOM.btnBackup.addEventListener('click', async () => {
+           alert("Your daily clips are automatically downloaded to your device's Downloads folder as 'osad-YYYY-MM-DD.webm'. Please back these up to a cloud service manually!"); 
+        });
+
+        // Start
+        initApp();
+
+    </script>
+</body>
+</html>
