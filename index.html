@@ -148,6 +148,12 @@
             </div>
         </div>
         
+        <!-- Search Bar -->
+        <div class="flex gap-2 w-full">
+            <input type="text" id="dateSearchInput" placeholder="Jump to DD-MM-YYYY" class="bg-slate-800 text-white px-4 py-2 rounded-lg flex-1 text-sm border border-slate-700 focus:outline-none focus:border-rose-600 placeholder-slate-500">
+            <button id="btnSearch" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg transition-colors"><i data-lucide="search" class="w-4 h-4"></i></button>
+        </div>
+
         <!-- Recording Target Indicator -->
         <div id="targetIndicator" class="hidden w-full bg-blue-500/10 border border-blue-500/20 rounded-lg p-2 text-center">
             <p class="text-blue-400 text-xs font-medium">Recording for: <span id="targetDateDisplay" class="font-bold text-blue-300"></span></p>
@@ -286,6 +292,10 @@
             monthLabel: document.getElementById('monthLabel'),
             statusText: document.getElementById('statusText'),
             
+            // Search
+            dateSearchInput: document.getElementById('dateSearchInput'),
+            btnSearch: document.getElementById('btnSearch'),
+
             // Camera
             cameraPreview: document.getElementById('cameraPreview'),
             playbackPreview: document.getElementById('playbackPreview'),
@@ -402,6 +412,51 @@
                     resolve(all.filter(c => c.mode === mode));
                 };
             });
+        }
+
+        // --- SEARCH LOGIC ---
+        DOM.btnSearch.addEventListener('click', handleSearch);
+        DOM.dateSearchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleSearch();
+        });
+
+        async function handleSearch() {
+            const input = DOM.dateSearchInput.value.trim();
+            // Regex validation for DD-MM-YYYY
+            const regex = /^(\d{2})-(\d{2})-(\d{4})$/;
+            const match = input.match(regex);
+            
+            if (!match) { 
+                alert("Please enter date in DD-MM-YYYY format"); 
+                return; 
+            }
+            
+            const [_, d, m, y] = match;
+            const isoDate = `${y}-${m}-${d}`;
+            
+            // Basic date validation
+            const testDate = new Date(isoDate);
+            if (isNaN(testDate.getTime())) {
+                alert("Invalid date");
+                return;
+            }
+
+            // Update View to that month
+            APP.viewDate = new Date(Number(y), Number(m) - 1, 1);
+            updateMonthLabel();
+            
+            const clip = await getClip(isoDate, APP.mode);
+            
+            if (clip) {
+                // Video exists -> render calendar to show it and open modal
+                await renderCalendar();
+                openClipModal(isoDate);
+            } else {
+                // No video -> select as target
+                setTargetDate(isoDate);
+                // Alert the user briefly or update status text
+                DOM.statusText.textContent = `Jumped to ${input}`;
+            }
         }
 
         // --- VIEW & NAVIGATION LOGIC ---
@@ -569,7 +624,17 @@
 
             DOM.statusText.textContent = "Starting camera...";
             
-            let constraints = { audio: true, video: {} };
+            // HIGH QUALITY CONSTRAINTS - Enforce 9:16 Portrait @ 1080p
+            let constraints = { 
+                audio: true, 
+                video: {
+                    width: { ideal: 1080 }, // Portrait Width
+                    height: { ideal: 1920 }, // Portrait Height
+                    aspectRatio: { ideal: 0.5625 } // 9:16 Aspect Ratio
+                } 
+            };
+            
+            // Handle Facing Mode
             if (APP.mode === 'self') {
                 constraints.video.facingMode = 'user';
             } else {
@@ -615,7 +680,11 @@
             }
 
             try {
-                APP.mediaRecorder = new MediaRecorder(APP.cameraStream, { mimeType: selectedMime });
+                // High Bitrate for Quality
+                APP.mediaRecorder = new MediaRecorder(APP.cameraStream, { 
+                    mimeType: selectedMime,
+                    videoBitsPerSecond: 8000000 // 8 Mbps
+                });
             } catch (e) {
                 alert("Recorder Error: " + e.message); return;
             }
@@ -642,7 +711,7 @@
 
         async function handleRecordingComplete(blob) {
             await saveClip(APP.targetDate, APP.mode, blob);
-            downloadFile(blob, `${APP.mode}_${APP.targetDate}.webm`);
+            downloadFile(blob, `${APP.mode}_${formatDateDisplay(APP.targetDate)}.webm`);
             await renderCalendar();
             showDoneState(blob);
         }
