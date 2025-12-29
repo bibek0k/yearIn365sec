@@ -734,11 +734,14 @@
         });
 
         async function runFFmpeg(clips) {
-            const { FFmpeg } = FFmpeg;
+            const { FFmpeg } = FFmpegWASM;
             const { fetchFile } = FFmpegUtil;
             if (!APP.ffmpeg) {
                 APP.ffmpeg = new FFmpeg();
-                await APP.ffmpeg.load({ coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.7/dist/ffmpeg-core.js' });
+                await APP.ffmpeg.load({ 
+                    coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.7/dist/ffmpeg-core.js',
+                    wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.7/dist/ffmpeg-core.wasm'
+                });
             }
             
             clips.sort((a, b) => a.date.localeCompare(b.date));
