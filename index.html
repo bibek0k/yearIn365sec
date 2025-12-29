@@ -78,6 +78,8 @@
             cursor: pointer;
             border: 1px solid transparent;
             position: relative;
+            user-select: none; /* Prevent text selection on long press */
+            -webkit-user-select: none;
         }
 
         .day-cell:hover {
@@ -129,6 +131,22 @@
             border-radius: 9999px;
             transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
+
+        /* Custom Tooltip */
+        #dateTooltip {
+            position: fixed;
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            pointer-events: none;
+            z-index: 100;
+            white-space: nowrap;
+            transform: translate(-50%, -100%);
+            margin-top: -8px;
+            border: 1px solid #334155;
+        }
     </style>
 </head>
 <body class="min-h-screen flex flex-col items-center safe-pb">
@@ -138,7 +156,7 @@
         <div class="flex justify-between items-center">
             <div>
                 <h1 class="text-2xl font-bold tracking-tight">Our Year</h1>
-                <p class="text-slate-400 text-sm" id="dateDisplay">Loading...</p>
+                <p class="text-slate-400 text-sm font-mono" id="dateDisplay">Loading...</p>
             </div>
             <!-- Mode Toggle -->
             <div class="mode-toggle w-40">
@@ -150,7 +168,7 @@
         
         <!-- Recording Target Indicator -->
         <div id="targetIndicator" class="hidden w-full bg-blue-500/10 border border-blue-500/20 rounded-lg p-2 text-center">
-            <p class="text-blue-400 text-xs font-medium">Recording for: <span id="targetDateDisplay" class="font-bold text-blue-300"></span></p>
+            <p class="text-blue-400 text-xs font-medium">Recording for: <span id="targetDateDisplay" class="font-bold text-blue-300 font-mono"></span></p>
         </div>
     </header>
 
@@ -232,11 +250,17 @@
 
     <!-- Clip Viewer / Delete Modal -->
     <div id="clipModal" class="fixed inset-0 bg-slate-950/95 z-40 hidden flex-col items-center justify-center p-6">
-        <div class="relative w-full max-w-md bg-slate-900 rounded-xl overflow-hidden shadow-2xl border border-slate-800">
+        <div class="relative w-full max-w-md bg-slate-900 rounded-xl overflow-hidden shadow-2xl border border-slate-800 flex flex-col">
+            <!-- Modal Header with Date -->
+            <div class="bg-slate-900 p-4 border-b border-slate-800 flex justify-between items-center">
+                <h3 id="modalDateDisplay" class="text-white font-mono font-bold text-lg"></h3>
+                <button id="btnCloseClip" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+
             <video id="modalVideo" controls class="w-full aspect-[9/16] bg-black"></video>
-            <div class="p-4 flex justify-between items-center bg-slate-900">
-                <button id="btnCloseClip" class="text-slate-400 hover:text-white">Close</button>
-                <button id="btnDeleteClip" class="text-red-500 hover:text-red-400 font-medium flex items-center gap-2">
+            
+            <div class="p-4 flex justify-center items-center bg-slate-900 border-t border-slate-800">
+                <button id="btnDeleteClip" class="text-red-500 hover:text-red-400 font-medium flex items-center gap-2 text-sm">
                     <i data-lucide="trash-2" class="w-4 h-4"></i> Delete & Replace
                 </button>
             </div>
@@ -255,6 +279,9 @@
             <button id="btnCloseModal" class="hidden w-full bg-slate-800 text-white py-3 rounded-lg">Close</button>
         </div>
     </div>
+
+    <!-- Custom Tooltip Element -->
+    <div id="dateTooltip" class="hidden"></div>
 
     <script>
         lucide.createIcons();
@@ -285,6 +312,7 @@
             targetIndicator: document.getElementById('targetIndicator'),
             monthLabel: document.getElementById('monthLabel'),
             statusText: document.getElementById('statusText'),
+            dateTooltip: document.getElementById('dateTooltip'),
             
             // Camera
             cameraPreview: document.getElementById('cameraPreview'),
@@ -312,6 +340,7 @@
             // Modals
             clipModal: document.getElementById('clipModal'),
             modalVideo: document.getElementById('modalVideo'),
+            modalDateDisplay: document.getElementById('modalDateDisplay'),
             btnCloseClip: document.getElementById('btnCloseClip'),
             btnDeleteClip: document.getElementById('btnDeleteClip'),
             
@@ -329,10 +358,16 @@
             btnBackup: document.getElementById('btnBackup')
         };
 
-        // --- INIT ---
-        DOM.dateDisplay.textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-        // updateTargetUI(); // REMOVED: Caused race condition (DB null)
+        // --- HELPERS ---
+        function formatDisplayDate(dateStr) {
+            if(!dateStr) return '';
+            const [y, m, d] = dateStr.split('-');
+            return `${d}-${m}-${y}`;
+        }
 
+        // --- INIT ---
+        DOM.dateDisplay.textContent = formatDisplayDate(APP.today);
+        
         // --- DATABASE ---
         async function initDB() {
             return new Promise((resolve, reject) => {
@@ -365,9 +400,7 @@
         }
 
         async function getClip(date, mode) {
-            // Guard clause for safety
             if (!APP.db) return null;
-
             const id = getKey(date, mode);
             return new Promise((resolve) => {
                 const tx = APP.db.transaction(APP.storeName, 'readonly');
@@ -389,14 +422,11 @@
         }
 
         async function getAllClips(mode) {
-             // Guard clause for safety
              if (!APP.db) return [];
-
             return new Promise((resolve) => {
                 const tx = APP.db.transaction(APP.storeName, 'readonly');
                 const req = tx.objectStore(APP.storeName).getAll();
                 req.onsuccess = () => {
-                    // Filter by mode in memory
                     const all = req.result || [];
                     resolve(all.filter(c => c.mode === mode));
                 };
@@ -430,10 +460,10 @@
                 const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                 const dateObj = new Date(year, month, d);
                 const dayOfYear = getDayOfYear(dateObj);
+                const displayDate = formatDisplayDate(dateStr);
                 
                 const el = document.createElement('div');
                 el.className = 'day-cell';
-                el.title = dateStr; // Tooltip
                 
                 const hasClip = clipMap.has(dateStr);
                 const isTarget = dateStr === APP.targetDate;
@@ -451,8 +481,50 @@
                     el.classList.add('target-active');
                 }
 
+                // Tooltip Events
+                setupTooltip(el, displayDate);
+
                 DOM.calendarGrid.appendChild(el);
             }
+        }
+
+        // --- TOOLTIP LOGIC ---
+        function setupTooltip(el, text) {
+            // Desktop Hover
+            el.addEventListener('mouseenter', (e) => showTooltip(e, text));
+            el.addEventListener('mouseleave', hideTooltip);
+            el.addEventListener('mousemove', (e) => updateTooltipPos(e));
+
+            // Mobile Long Press
+            let pressTimer;
+            el.addEventListener('touchstart', (e) => {
+                pressTimer = setTimeout(() => {
+                    showTooltip(e.touches[0], text);
+                }, 500); // 500ms long press
+            }, {passive: true});
+
+            el.addEventListener('touchend', () => {
+                clearTimeout(pressTimer);
+                hideTooltip();
+            });
+            
+            el.addEventListener('touchmove', () => clearTimeout(pressTimer));
+        }
+
+        function showTooltip(e, text) {
+            DOM.dateTooltip.textContent = text;
+            DOM.dateTooltip.classList.remove('hidden');
+            updateTooltipPos(e);
+        }
+
+        function hideTooltip() {
+            DOM.dateTooltip.classList.add('hidden');
+        }
+
+        function updateTooltipPos(e) {
+            // Position above the cursor/finger
+            DOM.dateTooltip.style.left = e.clientX + 'px';
+            DOM.dateTooltip.style.top = (e.clientY - 10) + 'px';
         }
 
         DOM.btnPrevMonth.addEventListener('click', () => {
@@ -471,7 +543,7 @@
 
         function setMode(mode) {
             APP.mode = mode;
-            APP.targetDate = APP.today; // Reset target on mode switch usually
+            APP.targetDate = APP.today;
             updateTargetUI();
             
             if (mode === 'self') {
@@ -486,10 +558,8 @@
                 if(APP.cameraStream) DOM.btnSwitchCam.classList.remove('hidden');
             }
             
-            // Refresh
             renderCalendar();
             resetRecorderUI();
-            // If camera is running, restart it with new constraints
             if (APP.cameraStream) startCamera(); 
         }
 
@@ -502,14 +572,14 @@
             APP.targetDate = date;
             updateTargetUI();
             resetRecorderUI();
-            renderCalendar(); // To update grid styling
+            renderCalendar();
         }
         
         function updateTargetUI() {
-            DOM.targetDateDisplay.textContent = APP.targetDate;
+            DOM.targetDateDisplay.textContent = formatDisplayDate(APP.targetDate);
             if (APP.targetDate !== APP.today) {
                 DOM.targetIndicator.classList.remove('hidden');
-                DOM.statusText.textContent = `Ready to record for ${APP.targetDate}`;
+                DOM.statusText.textContent = `Ready for ${formatDisplayDate(APP.targetDate)}`;
             } else {
                 DOM.targetIndicator.classList.add('hidden');
                 DOM.statusText.textContent = "Ready";
@@ -518,7 +588,6 @@
         }
         
         async function checkTargetStatus() {
-            // Check if clip exists for target date
             const existing = await getClip(APP.targetDate, APP.mode);
             if (existing) {
                 showDoneState(existing.blob);
@@ -531,16 +600,19 @@
             const clip = await getClip(date, APP.mode);
             if (!clip) return;
             
+            // Set Date in Modal Header
+            DOM.modalDateDisplay.textContent = formatDisplayDate(date);
+
             DOM.modalVideo.src = URL.createObjectURL(clip.blob);
             DOM.clipModal.classList.remove('hidden');
             DOM.clipModal.classList.add('flex');
             
             DOM.btnDeleteClip.onclick = async () => {
-                if (confirm(`Delete video for ${date}? You can record a new one immediately.`)) {
+                if (confirm(`Delete video for ${formatDisplayDate(date)}?`)) {
                     await deleteClip(date, APP.mode);
                     DOM.clipModal.classList.add('hidden');
                     DOM.clipModal.classList.remove('flex');
-                    setTargetDate(date); // Set target to this deleted date so user can re-record
+                    setTargetDate(date);
                 }
             };
         }
@@ -560,19 +632,16 @@
         });
 
         async function startCamera() {
-            // Check Secure Context
              if (!window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
                 alert("Camera requires HTTPS."); return;
             }
 
-            // Stop existing
             if (APP.cameraStream) {
                 APP.cameraStream.getTracks().forEach(t => t.stop());
             }
 
             DOM.statusText.textContent = "Starting camera...";
             
-            // Constraints
             let constraints = { audio: true, video: {} };
             if (APP.mode === 'self') {
                 constraints.video.facingMode = 'user';
@@ -588,7 +657,7 @@
                 DOM.playbackPreview.classList.add('hidden');
                 DOM.startOverlay.classList.add('opacity-0', 'pointer-events-none');
                 DOM.recordControls.classList.remove('hidden');
-                DOM.statusText.textContent = `Ready (${APP.mode} mode)`;
+                DOM.statusText.textContent = `Ready (${APP.mode})`;
                 
                 if (APP.mode === 'scene') DOM.btnSwitchCam.classList.remove('hidden');
                 
@@ -607,10 +676,9 @@
             DOM.btnRecord.disabled = true;
             DOM.recIcon.classList.replace('rounded-sm', 'rounded-full');
             DOM.recIcon.classList.add('animate-pulse');
-            DOM.statusText.textContent = "Recording 1s...";
+            DOM.statusText.textContent = "Recording...";
             APP.recordedChunks = [];
 
-            // MIME Type
             const mimeOptions = ["video/webm;codecs=vp8", "video/webm;codecs=vp9", "video/webm", "video/mp4"];
             const selectedMime = mimeOptions.find(type => MediaRecorder.isTypeSupported(type));
 
@@ -633,7 +701,6 @@
 
             APP.mediaRecorder.start();
 
-            // Animate Ring
             const circumference = 45 * 2 * Math.PI;
             DOM.progressCircle.style.strokeDashoffset = circumference;
             requestAnimationFrame(() => {
@@ -647,12 +714,8 @@
         }
 
         async function handleRecordingComplete(blob) {
-            // Save with Mode + Date key
             await saveClip(APP.targetDate, APP.mode, blob);
-            
-            // Filename: mode_date.webm
             downloadFile(blob, `${APP.mode}_${APP.targetDate}.webm`);
-            
             await renderCalendar();
             showDoneState(blob);
         }
@@ -665,9 +728,8 @@
             DOM.recordControls.classList.add('hidden');
             DOM.statusText.textContent = "Saved.";
             
-            // View clip button just plays the preview already shown, but maybe fullscreen?
             DOM.btnViewClip.onclick = () => {
-                // Just use the modal logic
+                DOM.modalDateDisplay.textContent = formatDisplayDate(APP.targetDate);
                 DOM.modalVideo.src = URL.createObjectURL(blob);
                 DOM.clipModal.classList.remove('hidden');
                 DOM.clipModal.classList.add('flex');
@@ -675,8 +737,6 @@
         }
         
         function resetRecorderUI() {
-             // Reset to camera view logic
-             // But don't auto-start camera unless it was active
              DOM.doneOverlay.classList.add('hidden');
              DOM.playbackPreview.classList.add('hidden');
              DOM.cameraPreview.classList.remove('hidden');
@@ -707,17 +767,10 @@
         // --- COMPILATION ---
         
         DOM.btnCompile.addEventListener('click', async () => {
-            // Compile current mode, all clips? Or just this month?
-            // "Compile Month" suggests just this month.
-            // Let's grab all clips for current month + current mode.
-            
             const clips = await getAllClips(APP.mode);
-            
-            // Filter by month
             const year = APP.viewDate.getFullYear();
             const month = String(APP.viewDate.getMonth() + 1).padStart(2, '0');
             const monthPrefix = `${year}-${month}`;
-            
             const monthClips = clips.filter(c => c.date.startsWith(monthPrefix));
             
             if (monthClips.length < 2) { alert("Need at least 2 clips in this month to compile."); return; }
@@ -776,7 +829,7 @@
             try {
                 await initDB();
                 updateMonthLabel();
-                updateTargetUI(); // Safe to call here now
+                updateTargetUI();
                 renderCalendar();
             } catch(e) { console.error(e); }
         }
