@@ -55,7 +55,12 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
+            /* Mirror user facing camera for natural feel in preview */
+            transform: scaleX(1); 
         }
+        
+        /* Specific mirror for self mode preview (optional preference) */
+        /* .camera-feed.self-mode { transform: scaleX(-1); } */
 
         /* Calendar Grid */
         .calendar-grid {
@@ -210,6 +215,9 @@
             </div>
         </div>
 
+        <!-- Hidden Canvas for force-portrait processing -->
+        <canvas id="processingCanvas" width="1080" height="1920" class="hidden"></canvas>
+
         <!-- Month Grid View -->
         <div class="bg-slate-800 rounded-xl p-4 flex flex-col gap-4">
             <!-- Month Navigation -->
@@ -284,7 +292,10 @@
             mode: 'self', // 'self' or 'scene'
             viewDate: new Date(), // Tracks month view
             targetDate: new Date().toISOString().split('T')[0], // Default recording target is today
-            sceneCamFacing: 'environment' // default rear for scene
+            sceneCamFacing: 'environment', // default rear for scene
+            
+            // Rendering loop
+            animationId: null
         };
 
         const DOM = {
@@ -302,6 +313,7 @@
             // Camera
             cameraPreview: document.getElementById('cameraPreview'),
             playbackPreview: document.getElementById('playbackPreview'),
+            processingCanvas: document.getElementById('processingCanvas'), // For 9:16 enforcement
             
             // Mode Switcher
             modeSelf: document.getElementById('modeSelf'),
@@ -625,26 +637,21 @@
 
             if (APP.cameraStream) {
                 APP.cameraStream.getTracks().forEach(t => t.stop());
+                if(APP.animationId) cancelAnimationFrame(APP.animationId);
             }
 
             DOM.statusText.textContent = "Starting camera...";
             
-            // HIGH QUALITY CONSTRAINTS - Enforce 9:16 Portrait @ 1080p
+            // Request high resolution. We don't enforce aspect ratio here because
+            // on desktop it might fail. We rely on Canvas to crop.
             let constraints = { 
                 audio: true, 
                 video: {
-                    width: { ideal: 1080 }, // Portrait Width
-                    height: { ideal: 1920 }, // Portrait Height
-                    aspectRatio: { ideal: 0.5625 } // 9:16 Aspect Ratio
+                    width: { ideal: 1920 }, 
+                    height: { ideal: 1920 }, // Try to get max square-ish area
+                    facingMode: APP.mode === 'self' ? 'user' : { ideal: APP.sceneCamFacing }
                 } 
             };
-            
-            // Handle Facing Mode
-            if (APP.mode === 'self') {
-                constraints.video.facingMode = 'user';
-            } else {
-                constraints.video.facingMode = { ideal: APP.sceneCamFacing };
-            }
 
             try {
                 APP.cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -658,11 +665,43 @@
                 
                 if (APP.mode === 'scene') DOM.btnSwitchCam.classList.remove('hidden');
                 
+                // START CANVAS LOOP to guarantee 9:16
+                updateCanvasLoop();
+
             } catch (err) {
                 console.error(err);
                 alert("Camera Error: " + err.name);
                 DOM.statusText.textContent = "Camera Error";
             }
+        }
+
+        // Processing Loop: Draws camera feed to 1080x1920 canvas with object-fit: cover
+        function updateCanvasLoop() {
+            const ctx = DOM.processingCanvas.getContext('2d');
+            const video = DOM.cameraPreview;
+            const canvas = DOM.processingCanvas;
+
+            function draw() {
+                if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                    const vw = video.videoWidth;
+                    const vh = video.videoHeight;
+                    const cw = canvas.width;
+                    const ch = canvas.height;
+
+                    // Calculate "cover" scale
+                    const scale = Math.max(cw / vw, ch / vh);
+                    const scaledWidth = vw * scale;
+                    const scaledHeight = vh * scale;
+
+                    // Center alignment
+                    const x = (cw - scaledWidth) / 2;
+                    const y = (ch - scaledHeight) / 2;
+
+                    ctx.drawImage(video, x, y, scaledWidth, scaledHeight);
+                }
+                APP.animationId = requestAnimationFrame(draw);
+            }
+            draw();
         }
 
         DOM.btnRecord.addEventListener('click', startRecording);
@@ -685,8 +724,16 @@
             }
 
             try {
-                // High Bitrate for Quality
-                APP.mediaRecorder = new MediaRecorder(APP.cameraStream, { 
+                // Record from the CANVAS stream (Fixed 1080x1920)
+                const canvasStream = DOM.processingCanvas.captureStream(30); // 30 FPS
+                
+                // Add audio from original mic stream
+                const audioTracks = APP.cameraStream.getAudioTracks();
+                if (audioTracks.length > 0) {
+                    canvasStream.addTrack(audioTracks[0]);
+                }
+
+                APP.mediaRecorder = new MediaRecorder(canvasStream, { 
                     mimeType: selectedMime,
                     videoBitsPerSecond: 8000000 // 8 Mbps
                 });
@@ -731,6 +778,7 @@
             
             DOM.btnViewClip.onclick = () => {
                 DOM.modalVideo.src = URL.createObjectURL(blob);
+                DOM.modalDateDisplay.textContent = formatDateDisplay(APP.targetDate);
                 DOM.clipModal.classList.remove('hidden');
                 DOM.clipModal.classList.add('flex');
             };
