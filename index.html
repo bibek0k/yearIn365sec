@@ -78,8 +78,6 @@
             cursor: pointer;
             border: 1px solid transparent;
             position: relative;
-            user-select: none; /* Prevent text selection on long press */
-            -webkit-user-select: none;
         }
 
         .day-cell:hover {
@@ -131,22 +129,6 @@
             border-radius: 9999px;
             transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
-
-        /* Custom Tooltip */
-        #dateTooltip {
-            position: fixed;
-            background: rgba(0, 0, 0, 0.9);
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            pointer-events: none;
-            z-index: 100;
-            white-space: nowrap;
-            transform: translate(-50%, -100%);
-            margin-top: -8px;
-            border: 1px solid #334155;
-        }
     </style>
 </head>
 <body class="min-h-screen flex flex-col items-center safe-pb">
@@ -156,7 +138,7 @@
         <div class="flex justify-between items-center">
             <div>
                 <h1 class="text-2xl font-bold tracking-tight">Our Year</h1>
-                <p class="text-slate-400 text-sm font-mono" id="dateDisplay">Loading...</p>
+                <p class="text-slate-400 text-sm" id="dateDisplay">Loading...</p>
             </div>
             <!-- Mode Toggle -->
             <div class="mode-toggle w-40">
@@ -168,7 +150,7 @@
         
         <!-- Recording Target Indicator -->
         <div id="targetIndicator" class="hidden w-full bg-blue-500/10 border border-blue-500/20 rounded-lg p-2 text-center">
-            <p class="text-blue-400 text-xs font-medium">Recording for: <span id="targetDateDisplay" class="font-bold text-blue-300 font-mono"></span></p>
+            <p class="text-blue-400 text-xs font-medium">Recording for: <span id="targetDateDisplay" class="font-bold text-blue-300"></span></p>
         </div>
     </header>
 
@@ -250,17 +232,11 @@
 
     <!-- Clip Viewer / Delete Modal -->
     <div id="clipModal" class="fixed inset-0 bg-slate-950/95 z-40 hidden flex-col items-center justify-center p-6">
-        <div class="relative w-full max-w-md bg-slate-900 rounded-xl overflow-hidden shadow-2xl border border-slate-800 flex flex-col">
-            <!-- Modal Header with Date -->
-            <div class="bg-slate-900 p-4 border-b border-slate-800 flex justify-between items-center">
-                <h3 id="modalDateDisplay" class="text-white font-mono font-bold text-lg"></h3>
-                <button id="btnCloseClip" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
-            </div>
-
+        <div class="relative w-full max-w-md bg-slate-900 rounded-xl overflow-hidden shadow-2xl border border-slate-800">
             <video id="modalVideo" controls class="w-full aspect-[9/16] bg-black"></video>
-            
-            <div class="p-4 flex justify-center items-center bg-slate-900 border-t border-slate-800">
-                <button id="btnDeleteClip" class="text-red-500 hover:text-red-400 font-medium flex items-center gap-2 text-sm">
+            <div class="p-4 flex justify-between items-center bg-slate-900">
+                <button id="btnCloseClip" class="text-slate-400 hover:text-white">Close</button>
+                <button id="btnDeleteClip" class="text-red-500 hover:text-red-400 font-medium flex items-center gap-2">
                     <i data-lucide="trash-2" class="w-4 h-4"></i> Delete & Replace
                 </button>
             </div>
@@ -279,9 +255,6 @@
             <button id="btnCloseModal" class="hidden w-full bg-slate-800 text-white py-3 rounded-lg">Close</button>
         </div>
     </div>
-
-    <!-- Custom Tooltip Element -->
-    <div id="dateTooltip" class="hidden"></div>
 
     <script>
         lucide.createIcons();
@@ -312,7 +285,6 @@
             targetIndicator: document.getElementById('targetIndicator'),
             monthLabel: document.getElementById('monthLabel'),
             statusText: document.getElementById('statusText'),
-            dateTooltip: document.getElementById('dateTooltip'),
             
             // Camera
             cameraPreview: document.getElementById('cameraPreview'),
@@ -340,7 +312,6 @@
             // Modals
             clipModal: document.getElementById('clipModal'),
             modalVideo: document.getElementById('modalVideo'),
-            modalDateDisplay: document.getElementById('modalDateDisplay'),
             btnCloseClip: document.getElementById('btnCloseClip'),
             btnDeleteClip: document.getElementById('btnDeleteClip'),
             
@@ -358,15 +329,8 @@
             btnBackup: document.getElementById('btnBackup')
         };
 
-        // --- HELPERS ---
-        function formatDisplayDate(dateStr) {
-            if(!dateStr) return '';
-            const [y, m, d] = dateStr.split('-');
-            return `${d}-${m}-${y}`;
-        }
-
         // --- INIT ---
-        DOM.dateDisplay.textContent = formatDisplayDate(APP.today);
+        DOM.dateDisplay.textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
         
         // --- DATABASE ---
         async function initDB() {
@@ -460,10 +424,10 @@
                 const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                 const dateObj = new Date(year, month, d);
                 const dayOfYear = getDayOfYear(dateObj);
-                const displayDate = formatDisplayDate(dateStr);
                 
                 const el = document.createElement('div');
                 el.className = 'day-cell';
+                el.title = dateStr; // Simple tooltip
                 
                 const hasClip = clipMap.has(dateStr);
                 const isTarget = dateStr === APP.targetDate;
@@ -481,50 +445,8 @@
                     el.classList.add('target-active');
                 }
 
-                // Tooltip Events
-                setupTooltip(el, displayDate);
-
                 DOM.calendarGrid.appendChild(el);
             }
-        }
-
-        // --- TOOLTIP LOGIC ---
-        function setupTooltip(el, text) {
-            // Desktop Hover
-            el.addEventListener('mouseenter', (e) => showTooltip(e, text));
-            el.addEventListener('mouseleave', hideTooltip);
-            el.addEventListener('mousemove', (e) => updateTooltipPos(e));
-
-            // Mobile Long Press
-            let pressTimer;
-            el.addEventListener('touchstart', (e) => {
-                pressTimer = setTimeout(() => {
-                    showTooltip(e.touches[0], text);
-                }, 500); // 500ms long press
-            }, {passive: true});
-
-            el.addEventListener('touchend', () => {
-                clearTimeout(pressTimer);
-                hideTooltip();
-            });
-            
-            el.addEventListener('touchmove', () => clearTimeout(pressTimer));
-        }
-
-        function showTooltip(e, text) {
-            DOM.dateTooltip.textContent = text;
-            DOM.dateTooltip.classList.remove('hidden');
-            updateTooltipPos(e);
-        }
-
-        function hideTooltip() {
-            DOM.dateTooltip.classList.add('hidden');
-        }
-
-        function updateTooltipPos(e) {
-            // Position above the cursor/finger
-            DOM.dateTooltip.style.left = e.clientX + 'px';
-            DOM.dateTooltip.style.top = (e.clientY - 10) + 'px';
         }
 
         DOM.btnPrevMonth.addEventListener('click', () => {
@@ -576,10 +498,10 @@
         }
         
         function updateTargetUI() {
-            DOM.targetDateDisplay.textContent = formatDisplayDate(APP.targetDate);
+            DOM.targetDateDisplay.textContent = APP.targetDate;
             if (APP.targetDate !== APP.today) {
                 DOM.targetIndicator.classList.remove('hidden');
-                DOM.statusText.textContent = `Ready for ${formatDisplayDate(APP.targetDate)}`;
+                DOM.statusText.textContent = `Ready for ${APP.targetDate}`;
             } else {
                 DOM.targetIndicator.classList.add('hidden');
                 DOM.statusText.textContent = "Ready";
@@ -600,15 +522,12 @@
             const clip = await getClip(date, APP.mode);
             if (!clip) return;
             
-            // Set Date in Modal Header
-            DOM.modalDateDisplay.textContent = formatDisplayDate(date);
-
             DOM.modalVideo.src = URL.createObjectURL(clip.blob);
             DOM.clipModal.classList.remove('hidden');
             DOM.clipModal.classList.add('flex');
             
             DOM.btnDeleteClip.onclick = async () => {
-                if (confirm(`Delete video for ${formatDisplayDate(date)}?`)) {
+                if (confirm(`Delete video for ${date}?`)) {
                     await deleteClip(date, APP.mode);
                     DOM.clipModal.classList.add('hidden');
                     DOM.clipModal.classList.remove('flex');
@@ -729,7 +648,6 @@
             DOM.statusText.textContent = "Saved.";
             
             DOM.btnViewClip.onclick = () => {
-                DOM.modalDateDisplay.textContent = formatDisplayDate(APP.targetDate);
                 DOM.modalVideo.src = URL.createObjectURL(blob);
                 DOM.clipModal.classList.remove('hidden');
                 DOM.clipModal.classList.add('flex');
