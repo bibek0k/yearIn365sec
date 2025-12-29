@@ -137,7 +137,7 @@
     <header class="w-full max-w-md p-6 pb-2 flex flex-col gap-4">
         <div class="flex justify-between items-center">
             <div>
-                <h1 class="text-2xl font-bold tracking-tight">Our Year</h1>
+                <h1 class="text-2xl font-bold tracking-tight">My Year</h1>
                 <p class="text-slate-400 text-sm" id="dateDisplay">Loading...</p>
             </div>
             <!-- Mode Toggle -->
@@ -331,6 +331,13 @@
 
         // --- INIT ---
         DOM.dateDisplay.textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+        // Helper to format dates as DD-MM-YYYY for display
+        function formatDateDisplay(isoDateString) {
+            if (!isoDateString) return '';
+            const [y, m, d] = isoDateString.split('-');
+            return `${d}-${m}-${y}`;
+        }
         
         // --- DATABASE ---
         async function initDB() {
@@ -427,7 +434,7 @@
                 
                 const el = document.createElement('div');
                 el.className = 'day-cell';
-                el.title = dateStr; // Simple tooltip
+                el.title = formatDateDisplay(dateStr); // Tooltip in DD-MM-YYYY
                 
                 const hasClip = clipMap.has(dateStr);
                 const isTarget = dateStr === APP.targetDate;
@@ -498,10 +505,10 @@
         }
         
         function updateTargetUI() {
-            DOM.targetDateDisplay.textContent = APP.targetDate;
+            DOM.targetDateDisplay.textContent = formatDateDisplay(APP.targetDate); // Display DD-MM-YYYY
             if (APP.targetDate !== APP.today) {
                 DOM.targetIndicator.classList.remove('hidden');
-                DOM.statusText.textContent = `Ready for ${APP.targetDate}`;
+                DOM.statusText.textContent = `Ready for ${formatDateDisplay(APP.targetDate)}`; // Display DD-MM-YYYY
             } else {
                 DOM.targetIndicator.classList.add('hidden');
                 DOM.statusText.textContent = "Ready";
@@ -527,7 +534,8 @@
             DOM.clipModal.classList.add('flex');
             
             DOM.btnDeleteClip.onclick = async () => {
-                if (confirm(`Delete video for ${date}?`)) {
+                // Confirm using DD-MM-YYYY
+                if (confirm(`Delete video for ${formatDateDisplay(date)}?`)) {
                     await deleteClip(date, APP.mode);
                     DOM.clipModal.classList.add('hidden');
                     DOM.clipModal.classList.remove('flex');
