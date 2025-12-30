@@ -43,7 +43,7 @@
         .camera-container {
             position: relative;
             width: 100%;
-            padding-top: 177.77%; /* 9:16 Aspect Ratio */
+            padding-top: 133.33%; /* 3:4 Aspect Ratio (480x640) */
             background: #000;
             border-radius: 1rem;
             overflow: hidden;
@@ -265,7 +265,7 @@
             <div class="absolute top-4 left-0 w-full flex justify-center z-10 pointer-events-none">
                 <span id="modalDateDisplay" class="bg-black/40 backdrop-blur-md text-white/90 px-4 py-1.5 rounded-full text-sm font-medium shadow-lg border border-white/10"></span>
             </div>
-            <video id="modalVideo" controls class="w-full aspect-[9/16] bg-black"></video>
+            <video id="modalVideo" controls class="w-full aspect-[3/4] bg-black"></video>
             <div class="p-4 flex justify-between items-center bg-slate-900">
                 <button id="btnCloseClip" class="text-slate-400 hover:text-white">Close</button>
                 <button id="btnDeleteClip" class="text-red-500 hover:text-red-400 font-medium flex items-center gap-2">
