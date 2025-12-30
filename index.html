@@ -59,9 +59,6 @@
             transform: scaleX(1); 
         }
         
-        /* Specific mirror for self mode preview (optional preference) */
-        /* .camera-feed.self-mode { transform: scaleX(-1); } */
-
         /* Calendar Grid */
         .calendar-grid {
             display: grid;
@@ -134,9 +131,18 @@
             border-radius: 9999px;
             transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
+
+        /* Screen Flash Overlay */
+        #screenFlashOverlay {
+            pointer-events: none;
+            transition: opacity 0.1s ease-in-out;
+        }
     </style>
 </head>
 <body class="min-h-screen flex flex-col items-center safe-pb">
+
+    <!-- Screen Flash Overlay -->
+    <div id="screenFlashOverlay" class="fixed inset-0 bg-white opacity-0 z-[100]"></div>
 
     <!-- Header & Mode Switch -->
     <header class="w-full max-w-md p-6 pb-2 flex flex-col gap-4">
@@ -193,10 +199,15 @@
                     </div>
                 </div>
 
-                <!-- Camera Switch (Scene Mode Only) -->
-                <button id="btnSwitchCam" class="hidden absolute top-4 right-4 bg-slate-800/80 text-white p-2 rounded-full z-30">
-                    <i data-lucide="refresh-cw" class="w-5 h-5"></i>
-                </button>
+                <!-- Camera Tools (Switch & Flash) -->
+                <div class="absolute top-4 right-4 z-30 flex flex-col gap-2">
+                    <button id="btnSwitchCam" class="hidden bg-slate-800/80 text-white p-2 rounded-full backdrop-blur-sm">
+                        <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+                    </button>
+                    <button id="btnFlash" class="hidden bg-slate-800/80 text-slate-400 p-2 rounded-full backdrop-blur-sm">
+                        <i id="iconFlash" data-lucide="zap-off" class="w-5 h-5"></i>
+                    </button>
+                </div>
             </div>
 
             <!-- Controls -->
@@ -215,8 +226,8 @@
             </div>
         </div>
 
-        <!-- Hidden Canvas for force-portrait processing -->
-        <canvas id="processingCanvas" width="1080" height="1920" class="hidden"></canvas>
+        <!-- Hidden Canvas for force-portrait processing (Reduced to 720p for stability) -->
+        <canvas id="processingCanvas" width="720" height="1280" class="hidden"></canvas>
 
         <!-- Month Grid View -->
         <div class="bg-slate-800 rounded-xl p-4 flex flex-col gap-4">
@@ -295,7 +306,12 @@
             sceneCamFacing: 'environment', // default rear for scene
             
             // Rendering loop
-            animationId: null
+            animationId: null,
+
+            // Flash State
+            flashEnabled: false,
+            hasTorch: false,
+            trackRef: null // Reference to the video track for torch
         };
 
         const DOM = {
@@ -328,7 +344,10 @@
             btnRetake: document.getElementById('btnRetake'),
             btnSwitchCam: document.getElementById('btnSwitchCam'),
             btnViewClip: document.getElementById('btnViewClip'),
-            
+            btnFlash: document.getElementById('btnFlash'),
+            iconFlash: document.getElementById('iconFlash'),
+            screenFlashOverlay: document.getElementById('screenFlashOverlay'),
+
             // Grid & Nav
             calendarGrid: document.getElementById('calendarGrid'),
             btnPrevMonth: document.getElementById('btnPrevMonth'),
@@ -438,7 +457,6 @@
 
         async function handleSearch() {
             const input = DOM.dateSearchInput.value.trim();
-            // Regex validation for DD-MM-YYYY
             const regex = /^(\d{2})-(\d{2})-(\d{4})$/;
             const match = input.match(regex);
             
@@ -450,27 +468,22 @@
             const [_, d, m, y] = match;
             const isoDate = `${y}-${m}-${d}`;
             
-            // Basic date validation
             const testDate = new Date(isoDate);
             if (isNaN(testDate.getTime())) {
                 alert("Invalid date");
                 return;
             }
 
-            // Update View to that month
             APP.viewDate = new Date(Number(y), Number(m) - 1, 1);
             updateMonthLabel();
             
             const clip = await getClip(isoDate, APP.mode);
             
             if (clip) {
-                // Video exists -> render calendar to show it and open modal
                 await renderCalendar();
                 openClipModal(isoDate);
             } else {
-                // No video -> select as target
                 setTargetDate(isoDate);
-                // Alert the user briefly or update status text
                 DOM.statusText.textContent = `Jumped to ${input}`;
             }
         }
@@ -505,7 +518,7 @@
                 
                 const el = document.createElement('div');
                 el.className = 'day-cell';
-                el.title = formatDateDisplay(dateStr); // Tooltip in DD-MM-YYYY
+                el.title = formatDateDisplay(dateStr);
                 
                 const hasClip = clipMap.has(dateStr);
                 const isTarget = dateStr === APP.targetDate;
@@ -576,10 +589,10 @@
         }
         
         function updateTargetUI() {
-            DOM.targetDateDisplay.textContent = formatDateDisplay(APP.targetDate); // Display DD-MM-YYYY
+            DOM.targetDateDisplay.textContent = formatDateDisplay(APP.targetDate);
             if (APP.targetDate !== APP.today) {
                 DOM.targetIndicator.classList.remove('hidden');
-                DOM.statusText.textContent = `Ready for ${formatDateDisplay(APP.targetDate)}`; // Display DD-MM-YYYY
+                DOM.statusText.textContent = `Ready for ${formatDateDisplay(APP.targetDate)}`;
             } else {
                 DOM.targetIndicator.classList.add('hidden');
                 DOM.statusText.textContent = "Ready";
@@ -606,7 +619,6 @@
             DOM.clipModal.classList.add('flex');
             
             DOM.btnDeleteClip.onclick = async () => {
-                // Confirm using DD-MM-YYYY
                 if (confirm(`Delete video for ${formatDateDisplay(date)}?`)) {
                     await deleteClip(date, APP.mode);
                     DOM.clipModal.classList.add('hidden');
@@ -622,7 +634,7 @@
             DOM.modalVideo.pause();
         });
 
-        // --- CAMERA & RECORDING ---
+        // --- CAMERA & FLASH LOGIC ---
         
         DOM.btnInit.addEventListener('click', startCamera);
         DOM.btnSwitchCam.addEventListener('click', () => {
@@ -630,11 +642,40 @@
             startCamera();
         });
 
+        DOM.btnFlash.addEventListener('click', toggleFlashState);
+
+        function toggleFlashState() {
+            APP.flashEnabled = !APP.flashEnabled;
+            updateFlashUI();
+        }
+
+        function updateFlashUI() {
+            if (APP.flashEnabled) {
+                DOM.btnFlash.classList.replace('text-slate-400', 'text-yellow-400');
+                DOM.iconFlash.setAttribute('data-lucide', 'zap');
+            } else {
+                DOM.btnFlash.classList.replace('text-yellow-400', 'text-slate-400');
+                DOM.iconFlash.setAttribute('data-lucide', 'zap-off');
+            }
+            lucide.createIcons();
+        }
+
+        async function applyTorch(state) {
+            if (APP.hasTorch && APP.trackRef) {
+                try {
+                    await APP.trackRef.applyConstraints({ advanced: [{ torch: state }] });
+                } catch (e) {
+                    console.warn("Torch failed", e);
+                }
+            }
+        }
+
         async function startCamera() {
              if (!window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
                 alert("Camera requires HTTPS."); return;
             }
 
+            // Cleanup previous
             if (APP.cameraStream) {
                 APP.cameraStream.getTracks().forEach(t => t.stop());
                 if(APP.animationId) cancelAnimationFrame(APP.animationId);
@@ -642,20 +683,18 @@
 
             DOM.statusText.textContent = "Starting camera...";
             
-            // Request high resolution. We don't enforce aspect ratio here because
-            // on desktop it might fail. We rely on Canvas to crop.
+            // REDUCED LOAD: Request 720p instead of 1080p for stability
             let constraints = { 
                 audio: true, 
                 video: {
-                    width: { ideal: 1920 }, 
-                    height: { ideal: 1920 }, // Try to get max square-ish area
+                    width: { ideal: 720 },  
+                    height: { ideal: 1280 },
                     facingMode: APP.mode === 'self' ? 'user' : { ideal: APP.sceneCamFacing }
                 } 
             };
 
             try {
                 APP.cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
-                
                 DOM.cameraPreview.srcObject = APP.cameraStream;
                 DOM.cameraPreview.classList.remove('hidden');
                 DOM.playbackPreview.classList.add('hidden');
@@ -663,9 +702,17 @@
                 DOM.recordControls.classList.remove('hidden');
                 DOM.statusText.textContent = `Ready (${APP.mode})`;
                 
+                // Show camera controls
+                DOM.btnFlash.classList.remove('hidden');
                 if (APP.mode === 'scene') DOM.btnSwitchCam.classList.remove('hidden');
+
+                // Check Torch Capabilities
+                const track = APP.cameraStream.getVideoTracks()[0];
+                APP.trackRef = track;
+                const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+                APP.hasTorch = !!capabilities.torch;
                 
-                // START CANVAS LOOP to guarantee 9:16
+                // START CANVAS LOOP (720x1280)
                 updateCanvasLoop();
 
             } catch (err) {
@@ -675,14 +722,13 @@
             }
         }
 
-        // Processing Loop: Draws camera feed to 1080x1920 canvas with object-fit: cover
         function updateCanvasLoop() {
             const ctx = DOM.processingCanvas.getContext('2d');
             const video = DOM.cameraPreview;
             const canvas = DOM.processingCanvas;
 
             function draw() {
-                if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                if (video.readyState >= 2) { // HAVE_CURRENT_DATA
                     const vw = video.videoWidth;
                     const vh = video.videoHeight;
                     const cw = canvas.width;
@@ -704,6 +750,8 @@
             draw();
         }
 
+        // --- RECORDING LIFECYCLE (FIXED) ---
+        
         DOM.btnRecord.addEventListener('click', startRecording);
 
         function startRecording() {
@@ -715,50 +763,75 @@
             DOM.statusText.textContent = "Recording...";
             APP.recordedChunks = [];
 
-            const mimeOptions = ["video/webm;codecs=vp8", "video/webm;codecs=vp9", "video/webm", "video/mp4"];
-            const selectedMime = mimeOptions.find(type => MediaRecorder.isTypeSupported(type));
-
-            if (!selectedMime) {
-                alert("Browser not supported.");
-                return;
+            // 1. Flash Logic (ON)
+            if (APP.flashEnabled) {
+                if (APP.hasTorch) {
+                    applyTorch(true);
+                } else {
+                    DOM.screenFlashOverlay.classList.remove('opacity-0'); // Screen Flash On
+                }
             }
 
+            // 2. Codec Selection (VP8 preferred for Web/Mobile)
+            const mimeOptions = ["video/webm;codecs=vp8", "video/webm", "video/mp4"];
+            const selectedMime = mimeOptions.find(type => MediaRecorder.isTypeSupported(type));
+
             try {
-                // Record from the CANVAS stream (Fixed 1080x1920)
-                const canvasStream = DOM.processingCanvas.captureStream(30); // 30 FPS
-                
-                // Add audio from original mic stream
+                // Record from Canvas (720x1280)
+                const canvasStream = DOM.processingCanvas.captureStream(30); 
                 const audioTracks = APP.cameraStream.getAudioTracks();
-                if (audioTracks.length > 0) {
-                    canvasStream.addTrack(audioTracks[0]);
-                }
+                if (audioTracks.length > 0) canvasStream.addTrack(audioTracks[0]);
 
                 APP.mediaRecorder = new MediaRecorder(canvasStream, { 
                     mimeType: selectedMime,
-                    videoBitsPerSecond: 8000000 // 8 Mbps
+                    videoBitsPerSecond: 2500000 // 2.5 Mbps (Good for 720p)
                 });
             } catch (e) {
                 alert("Recorder Error: " + e.message); return;
             }
 
-            APP.mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) APP.recordedChunks.push(e.data); };
+            APP.mediaRecorder.ondataavailable = (e) => { 
+                if (e.data && e.data.size > 0) APP.recordedChunks.push(e.data); 
+            };
+            
             APP.mediaRecorder.onstop = async () => {
+                // 3. Flash Logic (OFF)
+                if (APP.flashEnabled) {
+                    if (APP.hasTorch) {
+                        applyTorch(false);
+                    } else {
+                        DOM.screenFlashOverlay.classList.add('opacity-0'); // Screen Flash Off
+                    }
+                }
+
+                // 4. Validate Blob
                 const blob = new Blob(APP.recordedChunks, { type: selectedMime.split(';')[0] });
+                
+                // Safety check: if blob is tiny (e.g. < 5KB), it's likely corrupt/empty
+                if (blob.size < 5000) {
+                    alert("Recording failed (file too small). Please try again.");
+                    resetRecorderUI();
+                    return;
+                }
+
                 await handleRecordingComplete(blob);
             };
 
-            APP.mediaRecorder.start();
+            // 5. Start with Timeslice (Crucial for mobile stability)
+            APP.mediaRecorder.start(200); 
 
+            // UI Animation
             const circumference = 45 * 2 * Math.PI;
             DOM.progressCircle.style.strokeDashoffset = circumference;
             requestAnimationFrame(() => {
-                DOM.progressCircle.style.transition = 'stroke-dashoffset 1s linear';
+                DOM.progressCircle.style.transition = 'stroke-dashoffset 1.2s linear';
                 DOM.progressCircle.style.strokeDashoffset = '0';
             });
 
+            // 6. Stop after duration
             setTimeout(() => {
                 if (APP.mediaRecorder.state === 'recording') APP.mediaRecorder.stop();
-            }, 1000);
+            }, 1200); // 1.2s to ensure we get a full clean second
         }
 
         async function handleRecordingComplete(blob) {
@@ -769,11 +842,20 @@
         }
 
         function showDoneState(blob) {
+            // Stop camera to save battery/resources while viewing result
+            if(APP.cameraStream) {
+               APP.cameraStream.getTracks().forEach(t => t.stop());
+               APP.cameraStream = null;
+               if(APP.animationId) cancelAnimationFrame(APP.animationId);
+            }
+
             DOM.playbackPreview.src = URL.createObjectURL(blob);
             DOM.playbackPreview.classList.remove('hidden');
             DOM.cameraPreview.classList.add('hidden');
             DOM.doneOverlay.classList.remove('hidden');
             DOM.recordControls.classList.add('hidden');
+            DOM.btnFlash.classList.add('hidden');
+            DOM.btnSwitchCam.classList.add('hidden');
             DOM.statusText.textContent = "Saved.";
             
             DOM.btnViewClip.onclick = () => {
@@ -789,12 +871,17 @@
              DOM.playbackPreview.classList.add('hidden');
              DOM.cameraPreview.classList.remove('hidden');
              
-             if (APP.cameraStream) {
-                 DOM.recordControls.classList.remove('hidden');
-                 DOM.startOverlay.classList.add('opacity-0', 'pointer-events-none');
-             } else {
+             // If we stopped stream, we need to show Init button
+             if (!APP.cameraStream) {
                  DOM.recordControls.classList.add('hidden');
                  DOM.startOverlay.classList.remove('opacity-0', 'pointer-events-none');
+                 DOM.btnFlash.classList.add('hidden');
+                 DOM.btnSwitchCam.classList.add('hidden');
+                 DOM.statusText.textContent = "Ready";
+             } else {
+                 DOM.recordControls.classList.remove('hidden');
+                 DOM.btnFlash.classList.remove('hidden');
+                 if (APP.mode === 'scene') DOM.btnSwitchCam.classList.remove('hidden');
              }
              
              showReadyState();
