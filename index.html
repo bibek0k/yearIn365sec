@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>1 Second A Day</title>
-    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
+    <link rel="shortcut icon" href="assets/LogoIcon.jpg" type="image/x-icon">
     
     
     <!-- Tailwind CSS (via CDN) -->
@@ -485,7 +485,7 @@
             
             if (clip) {
                 await renderCalendar();
-                openClipModal(isoDate);
+                openClipModal(isoDate); // Will fallback to fetch
             } else {
                 setTargetDate(isoDate);
                 DOM.statusText.textContent = `Jumped to ${input}`;
@@ -507,7 +507,8 @@
 
         async function renderCalendar() {
             const clips = await getAllClips(APP.mode);
-            const clipMap = new Set(clips.map(c => c.date));
+            // Use Map to store full clip object for instant access
+            const clipMap = new Map(clips.map(c => [c.date, c]));
             
             DOM.calendarGrid.innerHTML = '';
             
@@ -524,14 +525,15 @@
                 el.className = 'day-cell';
                 el.title = formatDateDisplay(dateStr);
                 
-                const hasClip = clipMap.has(dateStr);
+                const clip = clipMap.get(dateStr);
                 const isTarget = dateStr === APP.targetDate;
 
                 el.innerHTML = `<span class="text-xs font-bold">Day</span><span class="text-lg leading-none">${dayOfYear}</span>`;
 
-                if (hasClip) {
+                if (clip) {
                     el.classList.add('filled');
-                    el.onclick = () => openClipModal(dateStr);
+                    // Pass the already-loaded clip object directly to avoid async fetch failure
+                    el.onclick = () => openClipModal(clip);
                 } else {
                     el.onclick = () => setTargetDate(dateStr);
                 }
@@ -615,14 +617,34 @@
             }
         }
 
-        async function openClipModal(date) {
-            const clip = await getClip(date, APP.mode);
-            if (!clip) return;
+        async function openClipModal(clipOrDate) {
+            let clip;
+            let date;
+
+            // Robust handling: If passed a string (legacy), fetch it. If object, use it directly.
+            if (typeof clipOrDate === 'string') {
+                date = clipOrDate;
+                clip = await getClip(date, APP.mode);
+            } else {
+                clip = clipOrDate;
+                date = clip.date;
+            }
+
+            if (!clip) {
+                console.error("Clip not found for", date);
+                return;
+            }
             
-            DOM.modalVideo.src = URL.createObjectURL(clip.blob);
-            DOM.modalDateDisplay.textContent = formatDateDisplay(date);
-            DOM.clipModal.classList.remove('hidden');
-            DOM.clipModal.classList.add('flex');
+            try {
+                DOM.modalVideo.src = URL.createObjectURL(clip.blob);
+                DOM.modalDateDisplay.textContent = formatDateDisplay(date);
+                DOM.clipModal.classList.remove('hidden');
+                DOM.clipModal.classList.add('flex');
+            } catch (e) {
+                console.error("Error displaying video", e);
+                alert("Video file unavailable.");
+                return;
+            }
             
             DOM.btnDeleteClip.onclick = async () => {
                 if (confirm(`Delete video for ${formatDateDisplay(date)}?`)) {
