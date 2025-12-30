@@ -267,10 +267,15 @@
             </div>
             <video id="modalVideo" controls class="w-full aspect-[3/4] bg-black"></video>
             <div class="p-4 flex justify-between items-center bg-slate-900">
-                <button id="btnCloseClip" class="text-slate-400 hover:text-white">Close</button>
-                <button id="btnDeleteClip" class="text-red-500 hover:text-red-400 font-medium flex items-center gap-2">
-                    <i data-lucide="trash-2" class="w-4 h-4"></i> Delete & Replace
-                </button>
+                <button id="btnCloseClip" class="text-slate-400 hover:text-white text-sm">Close</button>
+                <div class="flex gap-3">
+                    <button id="btnDeleteClip" class="text-red-500 hover:text-red-400 font-medium flex items-center gap-2 text-sm">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i> Delete
+                    </button>
+                    <button id="btnReplaceClip" class="text-blue-500 hover:text-blue-400 font-medium flex items-center gap-2 text-sm">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i> Replace
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -363,6 +368,7 @@
             modalDateDisplay: document.getElementById('modalDateDisplay'),
             btnCloseClip: document.getElementById('btnCloseClip'),
             btnDeleteClip: document.getElementById('btnDeleteClip'),
+            btnReplaceClip: document.getElementById('btnReplaceClip'),
             
             // Compile
             btnCompile: document.getElementById('btnCompile'),
@@ -646,13 +652,35 @@
                 return;
             }
             
+            // DELETE ACTION
             DOM.btnDeleteClip.onclick = async () => {
                 if (confirm(`Delete video for ${formatDateDisplay(date)}?`)) {
                     await deleteClip(date, APP.mode);
                     DOM.clipModal.classList.add('hidden');
                     DOM.clipModal.classList.remove('flex');
-                    setTargetDate(date);
+                    await renderCalendar(); // Refresh grid
+                    setTargetDate(APP.today); // Reset target to today
                 }
+            };
+
+            // REPLACE ACTION
+            DOM.btnReplaceClip.onclick = () => {
+                // 1. Close modal
+                DOM.clipModal.classList.add('hidden');
+                DOM.clipModal.classList.remove('flex');
+                DOM.modalVideo.pause();
+
+                // 2. Set target date to this clip's date
+                APP.targetDate = date;
+                
+                // 3. Update UI text manually
+                DOM.targetDateDisplay.textContent = formatDateDisplay(APP.targetDate);
+                DOM.targetIndicator.classList.remove('hidden');
+                DOM.statusText.textContent = `Ready for ${formatDateDisplay(APP.targetDate)}`;
+
+                // 4. Force "Ready" state (Recording Mode) immediately
+                // We bypass checkTargetStatus() so it doesn't show the existing video preview
+                showReadyState();
             };
         }
         
