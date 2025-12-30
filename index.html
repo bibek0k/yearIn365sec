@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>1 Second A Day</title>
-    <link rel="shortcut icon" href="assets/LogoIcon.jpg" type="image/x-icon">
+    <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     
     
     <!-- Tailwind CSS (via CDN) -->
@@ -700,6 +700,7 @@
             try {
                 APP.cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
                 DOM.cameraPreview.srcObject = APP.cameraStream;
+                await DOM.cameraPreview.play();
                 DOM.cameraPreview.classList.remove('hidden');
                 DOM.playbackPreview.classList.add('hidden');
                 DOM.startOverlay.classList.add('opacity-0', 'pointer-events-none');
@@ -836,7 +837,7 @@
             const recordDuration = APP.mode === 'scene' ? 3000 : 1000;
             const buffer = 200; // Small buffer
 
-            APP.mediaRecorder.start(200); 
+            APP.mediaRecorder.start(); 
 
             // UI Animation based on duration
             const circumference = 45 * 2 * Math.PI;
