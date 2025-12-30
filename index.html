@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>1 Second A Day</title>
+    <link rel="shortcut icon" href="assets/LogoIcon.jpg" type="image/x-icon">
+    
     
     <!-- Tailwind CSS (via CDN) -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -46,6 +48,13 @@
             border-radius: 1rem;
             overflow: hidden;
             box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+            transition: box-shadow 0.1s ease-in-out;
+        }
+
+        /* Screen Flash: Warm White Shadow covering everything OUTSIDE the camera container */
+        .camera-container.flash-active {
+            box-shadow: 0 0 0 200vmax rgba(255, 248, 235, 0.95); /* Warm White */
+            z-index: 100;
         }
 
         .camera-feed {
@@ -55,8 +64,12 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            /* Mirror user facing camera for natural feel in preview */
             transform: scaleX(1); 
+        }
+
+        /* CSS Mirroring for Preview */
+        .camera-feed.mirrored {
+            transform: scaleX(-1);
         }
         
         /* Calendar Grid */
@@ -131,18 +144,9 @@
             border-radius: 9999px;
             transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
-
-        /* Screen Flash Overlay */
-        #screenFlashOverlay {
-            pointer-events: none;
-            transition: opacity 0.1s ease-in-out;
-        }
     </style>
 </head>
 <body class="min-h-screen flex flex-col items-center safe-pb">
-
-    <!-- Screen Flash Overlay -->
-    <div id="screenFlashOverlay" class="fixed inset-0 bg-white opacity-0 z-[100]"></div>
 
     <!-- Header & Mode Switch -->
     <header class="w-full max-w-md p-6 pb-2 flex flex-col gap-4">
@@ -176,7 +180,7 @@
 
         <!-- Recorder Section -->
         <div id="recorderSection" class="relative">
-            <div class="camera-container">
+            <div id="cameraContainer" class="camera-container">
                 <video id="cameraPreview" autoplay playsinline muted class="camera-feed hidden"></video>
                 <video id="playbackPreview" playsinline loop class="camera-feed hidden"></video>
                 
@@ -226,8 +230,8 @@
             </div>
         </div>
 
-        <!-- Hidden Canvas for force-portrait processing (Reduced to 720p for stability) -->
-        <canvas id="processingCanvas" width="720" height="1280" class="hidden"></canvas>
+        <!-- Hidden Canvas for recording processing -->
+        <canvas id="processingCanvas" class="hidden"></canvas>
 
         <!-- Month Grid View -->
         <div class="bg-slate-800 rounded-xl p-4 flex flex-col gap-4">
@@ -327,9 +331,10 @@
             btnSearch: document.getElementById('btnSearch'),
 
             // Camera
+            cameraContainer: document.getElementById('cameraContainer'),
             cameraPreview: document.getElementById('cameraPreview'),
             playbackPreview: document.getElementById('playbackPreview'),
-            processingCanvas: document.getElementById('processingCanvas'), // For 9:16 enforcement
+            processingCanvas: document.getElementById('processingCanvas'), 
             
             // Mode Switcher
             modeSelf: document.getElementById('modeSelf'),
@@ -346,7 +351,6 @@
             btnViewClip: document.getElementById('btnViewClip'),
             btnFlash: document.getElementById('btnFlash'),
             iconFlash: document.getElementById('iconFlash'),
-            screenFlashOverlay: document.getElementById('screenFlashOverlay'),
 
             // Grid & Nav
             calendarGrid: document.getElementById('calendarGrid'),
@@ -564,10 +568,12 @@
                 DOM.modeScene.classList.replace('text-white', 'text-slate-400');
                 DOM.modeBg.style.transform = 'translateX(0)';
                 DOM.btnSwitchCam.classList.add('hidden');
+                DOM.cameraPreview.classList.add('mirrored'); // CSS Mirror for preview
             } else {
                 DOM.modeScene.classList.replace('text-slate-400', 'text-white');
                 DOM.modeSelf.classList.replace('text-white', 'text-slate-400');
                 DOM.modeBg.style.transform = 'translateX(100%)';
+                DOM.cameraPreview.classList.remove('mirrored');
                 if(APP.cameraStream) DOM.btnSwitchCam.classList.remove('hidden');
             }
             
@@ -683,12 +689,10 @@
 
             DOM.statusText.textContent = "Starting camera...";
             
-            // REDUCED LOAD: Request 720p instead of 1080p for stability
+            // REMOVED forced resolution/aspectRatio constraints for mobile stability
             let constraints = { 
                 audio: true, 
                 video: {
-                    width: { ideal: 720 },  
-                    height: { ideal: 1280 },
                     facingMode: APP.mode === 'self' ? 'user' : { ideal: APP.sceneCamFacing }
                 } 
             };
@@ -702,6 +706,13 @@
                 DOM.recordControls.classList.remove('hidden');
                 DOM.statusText.textContent = `Ready (${APP.mode})`;
                 
+                // Mirroring Check
+                if (APP.mode === 'self') {
+                    DOM.cameraPreview.classList.add('mirrored');
+                } else {
+                    DOM.cameraPreview.classList.remove('mirrored');
+                }
+
                 // Show camera controls
                 DOM.btnFlash.classList.remove('hidden');
                 if (APP.mode === 'scene') DOM.btnSwitchCam.classList.remove('hidden');
@@ -712,7 +723,7 @@
                 const capabilities = track.getCapabilities ? track.getCapabilities() : {};
                 APP.hasTorch = !!capabilities.torch;
                 
-                // START CANVAS LOOP (720x1280)
+                // START CANVAS LOOP
                 updateCanvasLoop();
 
             } catch (err) {
@@ -731,26 +742,32 @@
                 if (video.readyState >= 2) { // HAVE_CURRENT_DATA
                     const vw = video.videoWidth;
                     const vh = video.videoHeight;
+                    
+                    // Update canvas size to match input stream resolution (Stability fix)
+                    if (canvas.width !== vw || canvas.height !== vh) {
+                        canvas.width = vw;
+                        canvas.height = vh;
+                    }
+
                     const cw = canvas.width;
                     const ch = canvas.height;
 
-                    // Calculate "cover" scale
-                    const scale = Math.max(cw / vw, ch / vh);
-                    const scaledWidth = vw * scale;
-                    const scaledHeight = vh * scale;
+                    // Recording Logic Mirroring (for Self mode)
+                    ctx.save();
+                    if (APP.mode === 'self') {
+                        ctx.translate(cw, 0);
+                        ctx.scale(-1, 1);
+                    }
 
-                    // Center alignment
-                    const x = (cw - scaledWidth) / 2;
-                    const y = (ch - scaledHeight) / 2;
-
-                    ctx.drawImage(video, x, y, scaledWidth, scaledHeight);
+                    ctx.drawImage(video, 0, 0, cw, ch);
+                    ctx.restore();
                 }
                 APP.animationId = requestAnimationFrame(draw);
             }
             draw();
         }
 
-        // --- RECORDING LIFECYCLE (FIXED) ---
+        // --- RECORDING LIFECYCLE ---
         
         DOM.btnRecord.addEventListener('click', startRecording);
 
@@ -763,28 +780,28 @@
             DOM.statusText.textContent = "Recording...";
             APP.recordedChunks = [];
 
-            // 1. Flash Logic (ON)
+            // 1. Flash Logic (ON) - Screen Flash Fallback
             if (APP.flashEnabled) {
                 if (APP.hasTorch) {
                     applyTorch(true);
                 } else {
-                    DOM.screenFlashOverlay.classList.remove('opacity-0'); // Screen Flash On
+                    // Warm white screen flash via CSS
+                    DOM.cameraContainer.classList.add('flash-active');
                 }
             }
 
-            // 2. Codec Selection (VP8 preferred for Web/Mobile)
+            // 2. Codec Selection
             const mimeOptions = ["video/webm;codecs=vp8", "video/webm", "video/mp4"];
             const selectedMime = mimeOptions.find(type => MediaRecorder.isTypeSupported(type));
 
             try {
-                // Record from Canvas (720x1280)
                 const canvasStream = DOM.processingCanvas.captureStream(30); 
                 const audioTracks = APP.cameraStream.getAudioTracks();
                 if (audioTracks.length > 0) canvasStream.addTrack(audioTracks[0]);
 
                 APP.mediaRecorder = new MediaRecorder(canvasStream, { 
                     mimeType: selectedMime,
-                    videoBitsPerSecond: 2500000 // 2.5 Mbps (Good for 720p)
+                    videoBitsPerSecond: 2500000 
                 });
             } catch (e) {
                 alert("Recorder Error: " + e.message); return;
@@ -800,14 +817,12 @@
                     if (APP.hasTorch) {
                         applyTorch(false);
                     } else {
-                        DOM.screenFlashOverlay.classList.add('opacity-0'); // Screen Flash Off
+                        DOM.cameraContainer.classList.remove('flash-active');
                     }
                 }
 
-                // 4. Validate Blob
                 const blob = new Blob(APP.recordedChunks, { type: selectedMime.split(';')[0] });
                 
-                // Safety check: if blob is tiny (e.g. < 5KB), it's likely corrupt/empty
                 if (blob.size < 5000) {
                     alert("Recording failed (file too small). Please try again.");
                     resetRecorderUI();
@@ -817,21 +832,24 @@
                 await handleRecordingComplete(blob);
             };
 
-            // 5. Start with Timeslice (Crucial for mobile stability)
+            // 4. Determine Duration (1s Self / 3s Scene)
+            const recordDuration = APP.mode === 'scene' ? 3000 : 1000;
+            const buffer = 200; // Small buffer
+
             APP.mediaRecorder.start(200); 
 
-            // UI Animation
+            // UI Animation based on duration
             const circumference = 45 * 2 * Math.PI;
             DOM.progressCircle.style.strokeDashoffset = circumference;
             requestAnimationFrame(() => {
-                DOM.progressCircle.style.transition = 'stroke-dashoffset 1.2s linear';
+                DOM.progressCircle.style.transition = `stroke-dashoffset ${recordDuration/1000}s linear`;
                 DOM.progressCircle.style.strokeDashoffset = '0';
             });
 
-            // 6. Stop after duration
+            // 5. Stop after duration
             setTimeout(() => {
                 if (APP.mediaRecorder.state === 'recording') APP.mediaRecorder.stop();
-            }, 1200); // 1.2s to ensure we get a full clean second
+            }, recordDuration + buffer);
         }
 
         async function handleRecordingComplete(blob) {
