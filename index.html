@@ -885,7 +885,7 @@
 
             // 4. Determine Duration (1s Self / 3s Scene)
             const recordDuration = APP.mode === 'scene' ? 3000 : 1000;
-            const buffer = 200; // Small buffer
+            // REMOVED BUFFER TO FIX DURATION BUG
 
             APP.mediaRecorder.start(); 
 
@@ -900,7 +900,7 @@
             // 5. Stop after duration
             setTimeout(() => {
                 if (APP.mediaRecorder.state === 'recording') APP.mediaRecorder.stop();
-            }, recordDuration + buffer);
+            }, recordDuration); // Removed buffer
         }
 
         async function handleRecordingComplete(blob) {
