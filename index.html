@@ -78,6 +78,13 @@
             grid-template-columns: repeat(5, 1fr);
             gap: 0.5rem;
         }
+        
+        /* Responsive Grid for Tablet/Desktop */
+        @media (min-width: 768px) {
+            .calendar-grid {
+                gap: 0.75rem;
+            }
+        }
 
         .day-cell {
             aspect-ratio: 1;
@@ -149,7 +156,8 @@
 <body class="min-h-screen flex flex-col items-center safe-pb">
 
     <!-- Header & Mode Switch -->
-    <header class="w-full max-w-md p-6 pb-2 flex flex-col gap-4">
+    <!-- Updated for Responsive Width -->
+    <header class="w-full max-w-5xl p-6 pb-2 flex flex-col gap-4 z-10">
         <div class="flex justify-between items-center">
             <div>
                 <h1 class="text-2xl font-bold tracking-tight">My Year</h1>
@@ -176,57 +184,61 @@
     </header>
 
     <!-- Main Content -->
-    <main class="w-full max-w-md flex-1 px-4 flex flex-col gap-6">
+    <!-- Updated: Responsive Layout (Flex Col on Mobile, Row on Desktop) -->
+    <main class="w-full max-w-5xl flex-1 px-4 flex flex-col md:flex-row gap-6 md:gap-8 items-start justify-center">
 
-        <!-- Recorder Section -->
-        <div id="recorderSection" class="relative">
-            <div id="cameraContainer" class="camera-container">
-                <video id="cameraPreview" autoplay playsinline muted class="camera-feed hidden"></video>
-                <video id="playbackPreview" playsinline loop class="camera-feed hidden"></video>
-                
-                <!-- Start Overlay -->
-                <div id="startOverlay" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/50 backdrop-blur-sm z-10 transition-opacity">
-                    <button id="btnInitCamera" class="bg-rose-600 hover:bg-rose-700 text-white rounded-full p-6 shadow-lg transform transition active:scale-95">
-                        <i data-lucide="camera" class="w-8 h-8"></i>
-                    </button>
-                    <p class="mt-4 text-sm font-medium text-white/90">Tap to Start Camera</p>
-                </div>
-
-                <!-- Done Overlay -->
-                <div id="doneOverlay" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 z-20">
-                    <div class="bg-green-500/20 text-green-400 p-4 rounded-full mb-4">
-                        <i data-lucide="check" class="w-8 h-8"></i>
-                    </div>
-                    <h3 class="text-xl font-bold text-white">Captured!</h3>
-                    <div class="flex gap-4 mt-6">
-                         <button id="btnViewClip" class="text-sm bg-slate-700 text-white px-4 py-2 rounded-lg">View</button>
-                    </div>
-                </div>
-
-                <!-- Camera Tools (Switch & Flash) -->
-                <div class="absolute top-4 right-4 z-30 flex flex-col gap-2">
-                    <button id="btnSwitchCam" class="hidden bg-slate-800/80 text-white p-2 rounded-full backdrop-blur-sm">
-                        <i data-lucide="refresh-cw" class="w-5 h-5"></i>
-                    </button>
-                    <button id="btnFlash" class="hidden bg-slate-800/80 text-slate-400 p-2 rounded-full backdrop-blur-sm">
-                        <i id="iconFlash" data-lucide="zap-off" class="w-5 h-5"></i>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Controls -->
-            <div class="mt-6 flex items-center justify-center relative h-24">
-                <div id="recordControls" class="relative hidden">
-                    <svg class="progress-ring w-20 h-20" viewBox="0 0 100 100">
-                        <circle class="text-slate-700" stroke="currentColor" stroke-width="4" fill="transparent" r="45" cx="50" cy="50"/>
-                        <circle id="progressCircle" class="progress-ring__circle text-rose-500" stroke="currentColor" stroke-width="4" fill="transparent" r="45" cx="50" cy="50" stroke-dasharray="282.74" stroke-dashoffset="282.74"/>
-                    </svg>
+        <!-- Recorder Section Wrapper -->
+        <!-- Updated: Sticky on desktop, fixed width to prevent massive camera view -->
+        <div class="w-full md:w-[26rem] lg:w-[28rem] flex-shrink-0 mx-auto md:mx-0 md:sticky md:top-6">
+            <div id="recorderSection" class="relative">
+                <div id="cameraContainer" class="camera-container">
+                    <video id="cameraPreview" autoplay playsinline muted class="camera-feed hidden"></video>
+                    <video id="playbackPreview" playsinline loop class="camera-feed hidden"></video>
                     
-                    <button id="btnRecord" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-rose-600 rounded-full border-4 border-slate-900 shadow-xl active:scale-90 transition-transform flex items-center justify-center">
-                        <div id="recIcon" class="w-6 h-6 bg-white rounded-sm"></div>
-                    </button>
+                    <!-- Start Overlay -->
+                    <div id="startOverlay" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-900/50 backdrop-blur-sm z-10 transition-opacity">
+                        <button id="btnInitCamera" class="bg-rose-600 hover:bg-rose-700 text-white rounded-full p-6 shadow-lg transform transition active:scale-95">
+                            <i data-lucide="camera" class="w-8 h-8"></i>
+                        </button>
+                        <p class="mt-4 text-sm font-medium text-white/90">Tap to Start Camera</p>
+                    </div>
+
+                    <!-- Done Overlay -->
+                    <div id="doneOverlay" class="hidden absolute inset-0 flex flex-col items-center justify-center bg-slate-900/90 z-20">
+                        <div class="bg-green-500/20 text-green-400 p-4 rounded-full mb-4">
+                            <i data-lucide="check" class="w-8 h-8"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-white">Captured!</h3>
+                        <div class="flex gap-4 mt-6">
+                             <button id="btnViewClip" class="text-sm bg-slate-700 text-white px-4 py-2 rounded-lg">View</button>
+                        </div>
+                    </div>
+
+                    <!-- Camera Tools (Switch & Flash) -->
+                    <div class="absolute top-4 right-4 z-30 flex flex-col gap-2">
+                        <button id="btnSwitchCam" class="hidden bg-slate-800/80 text-white p-2 rounded-full backdrop-blur-sm">
+                            <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+                        </button>
+                        <button id="btnFlash" class="hidden bg-slate-800/80 text-slate-400 p-2 rounded-full backdrop-blur-sm">
+                            <i id="iconFlash" data-lucide="zap-off" class="w-5 h-5"></i>
+                        </button>
+                    </div>
                 </div>
-                <p id="statusText" class="absolute -bottom-2 text-xs text-slate-500 font-mono">Ready</p>
+
+                <!-- Controls -->
+                <div class="mt-6 flex items-center justify-center relative h-24">
+                    <div id="recordControls" class="relative hidden">
+                        <svg class="progress-ring w-20 h-20" viewBox="0 0 100 100">
+                            <circle class="text-slate-700" stroke="currentColor" stroke-width="4" fill="transparent" r="45" cx="50" cy="50"/>
+                            <circle id="progressCircle" class="progress-ring__circle text-rose-500" stroke="currentColor" stroke-width="4" fill="transparent" r="45" cx="50" cy="50" stroke-dasharray="282.74" stroke-dashoffset="282.74"/>
+                        </svg>
+                        
+                        <button id="btnRecord" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-16 h-16 bg-rose-600 rounded-full border-4 border-slate-900 shadow-xl active:scale-90 transition-transform flex items-center justify-center">
+                            <div id="recIcon" class="w-6 h-6 bg-white rounded-sm"></div>
+                        </button>
+                    </div>
+                    <p id="statusText" class="absolute -bottom-2 text-xs text-slate-500 font-mono">Ready</p>
+                </div>
             </div>
         </div>
 
@@ -234,7 +246,8 @@
         <canvas id="processingCanvas" class="hidden"></canvas>
 
         <!-- Month Grid View -->
-        <div class="bg-slate-800 rounded-xl p-4 flex flex-col gap-4">
+        <!-- Updated: Fills remaining space -->
+        <div class="w-full md:flex-1 bg-slate-800 rounded-xl p-4 flex flex-col gap-4">
             <!-- Month Navigation -->
             <div class="flex justify-between items-center">
                 <button id="btnPrevMonth" class="p-2 hover:bg-slate-700 rounded-full text-slate-400"><i data-lucide="chevron-left" class="w-5 h-5"></i></button>
@@ -259,20 +272,27 @@
         </div>
     </main>
 
+    <!-- Footer -->
+    <footer class="w-full text-center py-6 text-slate-500 text-xs font-medium">
+        <p>All Rights Reserved • Made with love & patience of Bibek</p>
+    </footer>
+
     <!-- Clip Viewer / Delete Modal -->
-    <div id="clipModal" class="fixed inset-0 bg-slate-950/95 z-40 hidden flex-col items-center justify-center p-6">
-        <div class="relative w-full max-w-md bg-slate-900 rounded-xl overflow-hidden shadow-2xl border border-slate-800">
+    <div id="clipModal" class="fixed inset-0 bg-slate-950/95 z-40 hidden flex-col items-center justify-center p-4 sm:p-6">
+        <!-- Updated: Responsive Modal Width & Height Constraints -->
+        <div class="relative w-full max-w-md md:max-w-lg max-h-[90vh] overflow-y-auto bg-slate-900 rounded-xl overflow-hidden shadow-2xl border border-slate-800 flex flex-col">
             <div class="absolute top-4 left-0 w-full flex justify-center z-10 pointer-events-none">
                 <span id="modalDateDisplay" class="bg-black/40 backdrop-blur-md text-white/90 px-4 py-1.5 rounded-full text-sm font-medium shadow-lg border border-white/10"></span>
             </div>
-            <video id="modalVideo" controls class="w-full aspect-[3/4] bg-black"></video>
-            <div class="p-4 flex justify-between items-center bg-slate-900">
-                <button id="btnCloseClip" class="text-slate-400 hover:text-white text-sm">Close</button>
+            <!-- Added playsinline for consistent behavior on tablets/desktop -->
+            <video id="modalVideo" controls playsinline webkit-playsinline class="w-full aspect-[3/4] bg-black block"></video>
+            <div class="p-4 flex justify-between items-center bg-slate-900 sticky bottom-0 z-20 border-t border-slate-800">
+                <button id="btnCloseClip" class="text-slate-400 hover:text-white text-sm transition-colors">Close</button>
                 <div class="flex gap-3">
-                    <button id="btnDeleteClip" class="text-red-500 hover:text-red-400 font-medium flex items-center gap-2 text-sm">
+                    <button id="btnDeleteClip" class="text-red-500 hover:text-red-400 font-medium flex items-center gap-2 text-sm transition-colors">
                         <i data-lucide="trash-2" class="w-4 h-4"></i> Delete
                     </button>
-                    <button id="btnReplaceClip" class="text-blue-500 hover:text-blue-400 font-medium flex items-center gap-2 text-sm">
+                    <button id="btnReplaceClip" class="text-blue-500 hover:text-blue-400 font-medium flex items-center gap-2 text-sm transition-colors">
                         <i data-lucide="refresh-cw" class="w-4 h-4"></i> Replace
                     </button>
                 </div>
