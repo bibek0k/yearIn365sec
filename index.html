@@ -10,10 +10,6 @@
     <!-- Tailwind CSS (via CDN) -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- FFmpeg WASM (via CDN) -->
-    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.7/dist/umd/ffmpeg.js"></script>
-    <script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
-
     <!-- Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
 
@@ -279,8 +275,9 @@
                 <button id="btnCompile" class="text-xs bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-md flex items-center gap-2 transition-colors">
                     <i data-lucide="film" class="w-3 h-3"></i> Compile Month
                 </button>
-                <button id="btnBackup" class="text-xs bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-md flex items-center gap-2 transition-colors">
-                    <i data-lucide="download" class="w-3 h-3"></i> Export All
+                <!-- REPLACED: Export All with Import & Compile -->
+                <button id="btnImportCompile" class="text-xs bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-md flex items-center gap-2 transition-colors">
+                    <i data-lucide="upload" class="w-3 h-3"></i> Import & Compile
                 </button>
             </div>
         </div>
@@ -312,16 +309,71 @@
         </div>
     </div>
 
-    <!-- Compile Modal -->
+    <!-- Compile Month Modal (Internal Clips) -->
     <div id="compileModal" class="fixed inset-0 bg-slate-950/90 z-50 hidden flex-col items-center justify-center p-6 text-center">
         <div class="max-w-sm w-full bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-2xl">
-            <h3 class="text-xl font-bold mb-2">Compiling Movie</h3>
-            <p class="text-slate-400 text-sm mb-6">Stitching clips locally...</p>
+            <h3 class="text-xl font-bold mb-4">Compiling Movie</h3>
+            <div class="relative w-full aspect-video bg-black rounded-lg overflow-hidden mb-4 border border-slate-800 shadow-inner">
+                <canvas id="compileCanvas" class="w-full h-full object-contain"></canvas>
+            </div>
             <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden mb-2">
                 <div id="compileProgress" class="bg-rose-600 h-full w-0 transition-all duration-300"></div>
             </div>
             <p id="compileLog" class="text-xs text-slate-500 font-mono mb-6">Initializing...</p>
-            <button id="btnCloseModal" class="hidden w-full bg-slate-800 text-white py-3 rounded-lg">Close</button>
+            <button id="btnCloseModal" class="hidden w-full bg-slate-800 text-white py-3 rounded-lg hover:bg-slate-700 transition-colors">Close</button>
+        </div>
+    </div>
+
+    <!-- NEW: Import & Compile Modal -->
+    <div id="importCompileModal" class="fixed inset-0 bg-slate-950/90 z-50 hidden flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto">
+        <div class="relative w-full max-w-2xl bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-2xl flex flex-col gap-4 max-h-full">
+            <h3 class="text-xl font-bold text-center">Import & Compile</h3>
+            
+            <!-- Drop Zone -->
+            <label id="dropZone" class="border-2 border-dashed border-slate-700 hover:border-rose-600 hover:bg-rose-600/5 bg-slate-800/50 rounded-xl p-8 text-center transition-all cursor-pointer flex flex-col items-center gap-2">
+                <input type="file" id="fileInput" multiple accept="video/*" class="hidden">
+                <i data-lucide="upload-cloud" class="w-10 h-10 text-slate-500"></i>
+                <strong class="text-white">Click or Drag Videos Here</strong>
+                <p class="text-xs text-slate-500">Format: self_DD-MM-YYYY.* or scene_DD-MM-YYYY.*</p>
+            </label>
+
+            <!-- File Lists -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="bg-slate-950 border border-slate-800 rounded-lg p-3">
+                    <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex justify-between">
+                        Self Clips <span id="selfCount" class="bg-slate-800 text-white px-2 rounded-full text-[10px] py-0.5">0</span>
+                    </h4>
+                    <div id="selfList" class="text-xs text-slate-500 space-y-1 max-h-32 overflow-y-auto">No files yet.</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded-lg p-3">
+                    <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex justify-between">
+                        Scene Clips <span id="sceneCount" class="bg-slate-800 text-white px-2 rounded-full text-[10px] py-0.5">0</span>
+                    </h4>
+                    <div id="sceneList" class="text-xs text-slate-500 space-y-1 max-h-32 overflow-y-auto">No files yet.</div>
+                </div>
+            </div>
+
+            <!-- Progress & Preview Area (Hidden initially) -->
+            <div id="importProgressArea" class="hidden flex flex-col gap-3 border-t border-slate-800 pt-4">
+                <div class="relative w-full aspect-video bg-black rounded-lg overflow-hidden border border-slate-800 shadow-inner">
+                    <canvas id="importPreviewCanvas" class="w-full h-full object-contain"></canvas>
+                </div>
+                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                    <div id="importProgressBar" class="bg-rose-600 h-full w-0 transition-all duration-300"></div>
+                </div>
+                <p id="importStatusLog" class="text-xs text-slate-500 font-mono text-center">Ready...</p>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex flex-col gap-2 mt-2">
+                <button id="btnStartImportCompile" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                    Compile Files
+                </button>
+                <div id="importDownloadLinks" class="flex flex-col gap-2 hidden">
+                    <!-- Download buttons injected here -->
+                </div>
+                <button id="btnCloseImportModal" class="w-full text-slate-400 hover:text-white text-sm py-2">Close</button>
+            </div>
         </div>
     </div>
 
@@ -345,7 +397,6 @@
             mediaRecorder: null,
             recordedChunks: [],
             cameraStream: null,
-            ffmpeg: null,
             
             // New State for V2
             mode: 'self', // 'self' or 'scene'
@@ -367,6 +418,13 @@
             flashEnabled: false,
             hasTorch: false,
             trackRef: null, // Reference to the video track for torch
+            
+            // Import Compiler State
+            importState: {
+                self: [],
+                scene: [],
+                isProcessing: false
+            },
             
             // Assets
             logoImg: null
@@ -427,12 +485,29 @@
             compileProgress: document.getElementById('compileProgress'),
             compileLog: document.getElementById('compileLog'),
             btnCloseModal: document.getElementById('btnCloseModal'),
+            compileCanvas: document.getElementById('compileCanvas'),
             
+            // Import Compiler
+            btnImportCompile: document.getElementById('btnImportCompile'),
+            importCompileModal: document.getElementById('importCompileModal'),
+            dropZone: document.getElementById('dropZone'),
+            fileInput: document.getElementById('fileInput'),
+            selfList: document.getElementById('selfList'),
+            sceneList: document.getElementById('sceneList'),
+            selfCount: document.getElementById('selfCount'),
+            sceneCount: document.getElementById('sceneCount'),
+            btnStartImportCompile: document.getElementById('btnStartImportCompile'),
+            importProgressArea: document.getElementById('importProgressArea'),
+            importPreviewCanvas: document.getElementById('importPreviewCanvas'),
+            importProgressBar: document.getElementById('importProgressBar'),
+            importStatusLog: document.getElementById('importStatusLog'),
+            importDownloadLinks: document.getElementById('importDownloadLinks'),
+            btnCloseImportModal: document.getElementById('btnCloseImportModal'),
+
             // Icons & Rings
             recordControls: document.getElementById('recordControls'),
             progressCircle: document.getElementById('progressCircle'),
-            recIcon: document.getElementById('recIcon'),
-            btnBackup: document.getElementById('btnBackup')
+            recIcon: document.getElementById('recIcon')
         };
 
         // --- INIT ---
@@ -1219,7 +1294,7 @@
             DOM.recIcon.classList.remove('animate-pulse');
         }
 
-        // --- COMPILATION ---
+        // --- COMPILATION (CANVAS BASED) ---
         
         DOM.btnCompile.addEventListener('click', async () => {
             vibrate(HAPTIC.tap);
@@ -1229,6 +1304,9 @@
             const monthPrefix = `${year}-${month}`;
             const monthClips = clips.filter(c => c.date.startsWith(monthPrefix));
             
+            // Sort by date ASC
+            monthClips.sort((a, b) => a.date.localeCompare(b.date));
+
             if (monthClips.length < 2) { 
                 DOM.statusText.textContent = "Needs 2+ clips to compile";
                 vibrate(HAPTIC.warning);
@@ -1238,8 +1316,8 @@
             DOM.compileModal.classList.remove('hidden');
             DOM.compileModal.classList.add('flex');
             
-            try { await runFFmpeg(monthClips); }
-            catch (err) { DOM.compileLog.innerHTML = `<span class="text-red-400">Error: ${err.message}<br>Check secure context.</span>`; DOM.btnCloseModal.classList.remove('hidden'); }
+            try { await compileClips(monthClips); }
+            catch (err) { DOM.compileLog.innerHTML = `<span class="text-red-400">Error: ${err.message}</span>`; DOM.btnCloseModal.classList.remove('hidden'); }
         });
 
         DOM.btnCloseModal.addEventListener('click', () => {
@@ -1247,34 +1325,135 @@
             DOM.compileModal.classList.add('hidden'); DOM.compileModal.classList.remove('flex');
         });
 
-        async function runFFmpeg(clips) {
-            const { FFmpeg } = FFmpegWASM;
-            const { fetchFile } = FFmpegUtil;
-            if (!APP.ffmpeg) {
-                APP.ffmpeg = new FFmpeg();
-                await APP.ffmpeg.load({ 
-                    coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.7/dist/ffmpeg-core.js',
-                    wasmURL: 'https://unpkg.com/@ffmpeg/core@0.12.7/dist/ffmpeg-core.wasm'
-                });
+        async function compileClips(items) {
+            const outputName = `Movie_${APP.mode}_${APP.viewDate.toISOString().slice(0,7)}`;
+            DOM.compileLog.textContent = `Initializing...`;
+            DOM.compileProgress.style.width = '0%';
+
+            // 1. Setup Audio Context & Destinations
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const audioDest = audioCtx.createMediaStreamDestination();
+            
+            // 2. Setup Video Element (Hidden)
+            const video = document.createElement('video');
+            video.crossOrigin = "anonymous";
+            video.muted = false; // Must be false to get audio data
+            video.playsInline = true;
+            
+            const sourceNode = audioCtx.createMediaElementSource(video);
+            sourceNode.connect(audioDest);
+
+            // 3. Prepare first video to get dimensions
+            const firstFileUrl = URL.createObjectURL(items[0].blob);
+            video.src = firstFileUrl;
+            await new Promise((resolve) => {
+                video.onloadedmetadata = () => resolve();
+            });
+
+            // Use the canvas in the DOM for preview
+            const canvas = DOM.compileCanvas;
+            const w = video.videoWidth;
+            const h = video.videoHeight;
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+
+            // 4. Setup MediaRecorder
+            const canvasStream = canvas.captureStream(30); // 30 FPS
+            const audioTrack = audioDest.stream.getAudioTracks()[0];
+            if (audioTrack) {
+                canvasStream.addTrack(audioTrack);
             }
-            
-            clips.sort((a, b) => a.date.localeCompare(b.date));
-            let fileList = '';
-            for (let i = 0; i < clips.length; i++) {
-                await APP.ffmpeg.writeFile(`c${i}.webm`, await fetchFile(clips[i].blob));
-                fileList += `file 'c${i}.webm'\n`;
+
+            const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9') 
+                ? 'video/webm; codecs=vp9' 
+                : 'video/webm';
+                
+            const recorder = new MediaRecorder(canvasStream, {
+                mimeType: mimeType,
+                videoBitsPerSecond: 5000000 // 5 Mbps
+            });
+
+            const chunks = [];
+            recorder.ondataavailable = (e) => {
+                if (e.data.size > 0) chunks.push(e.data);
+            };
+
+            recorder.start();
+
+            // 5. Playback Loop
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                DOM.compileLog.textContent = `Recording ${formatDateDisplay(item.date)} (${i + 1}/${items.length})`;
+                
+                if (i > 0) {
+                    video.src = URL.createObjectURL(item.blob);
+                    await new Promise(r => video.onloadedmetadata = r);
+                }
+
+                await playAndRecord(video, ctx, w, h);
+                
+                DOM.compileProgress.style.width = `${((i + 1) / items.length) * 100}%`;
             }
-            await APP.ffmpeg.writeFile('f.txt', fileList);
+
+            // 6. Finalize
+            recorder.stop();
+            DOM.compileLog.textContent = `Finalizing...`;
+
+            await new Promise(resolve => recorder.onstop = resolve);
+
+            const blob = new Blob(chunks, { type: 'video/webm' });
+            downloadFile(blob, `${outputName}.webm`);
             
-            DOM.compileLog.textContent = "Stitching...";
-            try { await APP.ffmpeg.exec(['-f', 'concat', '-safe', '0', '-i', 'f.txt', '-c', 'copy', 'out.webm']); }
-            catch { await APP.ffmpeg.exec(['-f', 'concat', '-safe', '0', '-i', 'f.txt', 'out.webm']); }
-            
-            const data = await APP.ffmpeg.readFile('out.webm');
-            downloadFile(new Blob([data.buffer], { type: 'video/webm' }), `Movie_${APP.mode}_${APP.viewDate.toISOString().slice(0,7)}.webm`);
             DOM.compileLog.textContent = "Done.";
             vibrate(HAPTIC.success);
             DOM.btnCloseModal.classList.remove('hidden');
+            
+            audioCtx.close();
+        }
+
+        /**
+         * Helper: Plays video from start to finish while drawing to canvas
+         */
+        function playAndRecord(video, ctx, targetW, targetH) {
+            return new Promise((resolve, reject) => {
+                video.currentTime = 0;
+                
+                const draw = () => {
+                    if (video.paused || video.ended) return;
+                    
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(0, 0, targetW, targetH);
+
+                    const vw = video.videoWidth;
+                    const vh = video.videoHeight;
+                    const scale = Math.min(targetW / vw, targetH / vh);
+                    const dw = vw * scale;
+                    const dh = vh * scale;
+                    const dx = (targetW - dw) / 2;
+                    const dy = (targetH - dh) / 2;
+
+                    ctx.drawImage(video, dx, dy, dw, dh);
+                    
+                    requestAnimationFrame(draw);
+                };
+
+                video.onended = () => {
+                    resolve();
+                };
+                
+                video.onerror = (e) => {
+                    console.error("Video Error", e);
+                    resolve(); // Skip broken videos
+                };
+
+                video.play().then(() => {
+                    draw();
+                }).catch(e => {
+                    console.error("Play error", e);
+                    resolve();
+                });
+            });
         }
 
         // --- UTILS ---
@@ -1283,14 +1462,232 @@
             document.body.appendChild(a); a.click(); document.body.removeChild(a);
         }
 
-        // NO ALERT: DOM.btnBackup.addEventListener('click', () => alert("Daily clips..."));
-        DOM.btnBackup.addEventListener('click', () => {
+        // --- IMPORT COMPILER LOGIC (NEW) ---
+        DOM.btnImportCompile.addEventListener('click', () => {
             vibrate(HAPTIC.tap);
-            // Just show a non-intrusive status
-            const original = DOM.statusText.textContent;
-            DOM.statusText.textContent = "Files are already in Downloads";
-            setTimeout(() => DOM.statusText.textContent = original, 3000);
+            DOM.importCompileModal.classList.remove('hidden');
+            DOM.importCompileModal.classList.add('flex');
         });
+
+        DOM.btnCloseImportModal.addEventListener('click', () => {
+            vibrate(HAPTIC.tap);
+            DOM.importCompileModal.classList.add('hidden');
+            DOM.importCompileModal.classList.remove('flex');
+            
+            // Reset state
+            APP.importState.self = [];
+            APP.importState.scene = [];
+            DOM.selfList.innerHTML = 'No files yet.';
+            DOM.sceneList.innerHTML = 'No files yet.';
+            DOM.selfCount.textContent = '0';
+            DOM.sceneCount.textContent = '0';
+            DOM.btnStartImportCompile.disabled = true;
+            DOM.importProgressArea.classList.add('hidden');
+            DOM.importDownloadLinks.classList.add('hidden');
+            DOM.importDownloadLinks.innerHTML = '';
+        });
+
+        // Drag & Drop
+        ;['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            DOM.dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault(); e.stopPropagation();
+        }
+
+        DOM.dropZone.addEventListener('dragenter', () => DOM.dropZone.classList.add('border-rose-600', 'bg-rose-600/10'));
+        DOM.dropZone.addEventListener('dragleave', () => DOM.dropZone.classList.remove('border-rose-600', 'bg-rose-600/10'));
+        DOM.dropZone.addEventListener('drop', handleDrop);
+        
+        // Click to Upload
+        DOM.dropZone.addEventListener('click', () => DOM.fileInput.click());
+        DOM.fileInput.addEventListener('change', (e) => processImportFiles(e.target.files));
+
+        function handleDrop(e) {
+            DOM.dropZone.classList.remove('border-rose-600', 'bg-rose-600/10');
+            processImportFiles(e.dataTransfer.files);
+        }
+
+        function processImportFiles(fileList) {
+            const files = Array.from(fileList);
+            vibrate(HAPTIC.tap);
+
+            // Reset UI for fresh batch or append? Let's reset for simplicity based on compiler.html logic
+            APP.importState.self = [];
+            APP.importState.scene = [];
+            DOM.importDownloadLinks.classList.add('hidden');
+            DOM.importDownloadLinks.innerHTML = '';
+
+            files.forEach(file => {
+                const parsed = parseFilename(file.name);
+                if (parsed) {
+                    const item = { file, ...parsed };
+                    if (parsed.type === 'self') APP.importState.self.push(item);
+                    if (parsed.type === 'scene') APP.importState.scene.push(item);
+                }
+            });
+
+            // Sort
+            const dateSorter = (a, b) => a.date - b.date;
+            APP.importState.self.sort(dateSorter);
+            APP.importState.scene.sort(dateSorter);
+
+            renderImportLists();
+            
+            const hasFiles = APP.importState.self.length > 0 || APP.importState.scene.length > 0;
+            DOM.btnStartImportCompile.disabled = !hasFiles;
+        }
+
+        function parseFilename(filename) {
+            // Regex for self_DD-MM-YYYY or scene_DD-MM-YYYY
+            const regex = /^(self|scene)_(\d{2})-(\d{2})-(\d{4}).*$/;
+            const match = filename.match(regex);
+            
+            if (!match) return null;
+            
+            const [_, type, day, month, year] = match;
+            const date = new Date(year, month - 1, day);
+            
+            return {
+                type, 
+                date,
+                formattedDate: `${day}/${month}/${year}` // For display
+            };
+        }
+
+        function renderImportLists() {
+            const renderGroup = (items, container) => {
+                if (items.length === 0) {
+                    container.innerHTML = 'No files found.';
+                    return;
+                }
+                container.innerHTML = items.map(item => `
+                    <div class="flex justify-between items-center bg-slate-900 p-2 rounded border border-slate-800">
+                        <span class="truncate">${item.file.name}</span>
+                        <span class="text-[10px] bg-rose-900/30 text-rose-400 px-1.5 py-0.5 rounded">${item.formattedDate}</span>
+                    </div>
+                `).join('');
+            };
+
+            renderGroup(APP.importState.self, DOM.selfList);
+            renderGroup(APP.importState.scene, DOM.sceneList);
+
+            DOM.selfCount.textContent = APP.importState.self.length;
+            DOM.sceneCount.textContent = APP.importState.scene.length;
+        }
+
+        DOM.btnStartImportCompile.addEventListener('click', async () => {
+            if (APP.importState.isProcessing) return;
+            APP.importState.isProcessing = true;
+            DOM.btnStartImportCompile.disabled = true;
+            DOM.importProgressArea.classList.remove('hidden');
+            vibrate(HAPTIC.action);
+
+            try {
+                if (APP.importState.self.length > 0) {
+                    await processImportQueue(APP.importState.self, 'self');
+                }
+                if (APP.importState.scene.length > 0) {
+                    await processImportQueue(APP.importState.scene, 'scene');
+                }
+                DOM.importStatusLog.textContent = "All compilations finished!";
+                vibrate(HAPTIC.success);
+            } catch (err) {
+                console.error(err);
+                DOM.importStatusLog.textContent = "Error: " + err.message;
+                vibrate(HAPTIC.warning);
+            } finally {
+                APP.importState.isProcessing = false;
+                DOM.importDownloadLinks.classList.remove('hidden');
+            }
+        });
+
+        async function processImportQueue(items, type) {
+            // Filename: type_START_to_END
+            const startDate = formatDateDisplay(items[0].date.toISOString().split('T')[0]);
+            const endDate = formatDateDisplay(items[items.length - 1].date.toISOString().split('T')[0]);
+            const outputName = `${type}_${startDate}_to_${endDate}`;
+
+            DOM.importStatusLog.textContent = `Compiling ${type} clips...`;
+            DOM.importProgressBar.style.width = '0%';
+
+            // 1. Setup Audio & Video
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const audioDest = audioCtx.createMediaStreamDestination();
+            
+            const video = document.createElement('video');
+            video.crossOrigin = "anonymous";
+            video.muted = false; 
+            video.playsInline = true;
+            
+            const sourceNode = audioCtx.createMediaElementSource(video);
+            sourceNode.connect(audioDest);
+
+            // 2. Prepare first video
+            const firstFileUrl = URL.createObjectURL(items[0].file);
+            video.src = firstFileUrl;
+            await new Promise((resolve) => { video.onloadedmetadata = () => resolve(); });
+
+            // 3. Canvas & Recorder
+            const canvas = DOM.importPreviewCanvas;
+            const w = video.videoWidth;
+            const h = video.videoHeight;
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+
+            const canvasStream = canvas.captureStream(30);
+            const audioTrack = audioDest.stream.getAudioTracks()[0];
+            if (audioTrack) canvasStream.addTrack(audioTrack);
+
+            const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9') 
+                ? 'video/webm; codecs=vp9' 
+                : 'video/webm';
+                
+            const recorder = new MediaRecorder(canvasStream, {
+                mimeType: mimeType,
+                videoBitsPerSecond: 5000000 
+            });
+
+            const chunks = [];
+            recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+            recorder.start();
+
+            // 4. Playback Loop
+            for (let i = 0; i < items.length; i++) {
+                const item = items[i];
+                DOM.importStatusLog.textContent = `Recording ${item.file.name} (${i + 1}/${items.length})`;
+                
+                if (i > 0) {
+                    video.src = URL.createObjectURL(item.file);
+                    await new Promise(r => video.onloadedmetadata = r);
+                }
+
+                await playAndRecord(video, ctx, w, h);
+                DOM.importProgressBar.style.width = `${((i + 1) / items.length) * 100}%`;
+            }
+
+            // 5. Finalize
+            recorder.stop();
+            DOM.importStatusLog.textContent = `Finalizing ${outputName}...`;
+            await new Promise(resolve => recorder.onstop = resolve);
+
+            const blob = new Blob(chunks, { type: 'video/webm' });
+            const url = URL.createObjectURL(blob);
+
+            // Create Download Button
+            const btn = document.createElement('a');
+            btn.href = url;
+            btn.download = `${outputName}.webm`;
+            btn.className = "block w-full bg-slate-800 hover:bg-slate-700 text-white text-center py-3 rounded-lg border border-slate-700 transition-colors font-medium text-sm";
+            btn.innerHTML = `<i data-lucide="download" class="inline w-4 h-4 mr-2"></i> Download ${outputName}`;
+            
+            DOM.importDownloadLinks.appendChild(btn);
+            lucide.createIcons();
+            
+            audioCtx.close();
+        }
 
         // Boot
         initApp();
