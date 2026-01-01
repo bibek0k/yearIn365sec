@@ -181,7 +181,7 @@
         <!-- Search Bar Wrapper -->
         <div class="w-full">
             <div id="searchContainer" class="flex gap-2 w-full transition-colors">
-                <input type="text" id="dateSearchInput" placeholder="Jump to DD-MM-YYYY" class="bg-slate-800 text-white px-4 py-2 rounded-lg flex-1 text-sm border border-slate-700 focus:outline-none focus:border-rose-600 placeholder-slate-500 transition-all">
+                <input type="text" id="dateSearchInput" placeholder="Jump to DD-MM-YYYY or Day-X" class="bg-slate-800 text-white px-4 py-2 rounded-lg flex-1 text-sm border border-slate-700 focus:outline-none focus:border-rose-600 placeholder-slate-500 transition-all">
                 <button id="btnSearch" class="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg transition-colors"><i data-lucide="search" class="w-4 h-4"></i></button>
             </div>
             <!-- Error Label -->
@@ -309,7 +309,7 @@
         </div>
     </div>
 
-    <!-- Compile Month Modal (Internal Clips) -->
+    <!-- Compile Modal (Internal Clips) -->
     <div id="compileModal" class="fixed inset-0 bg-slate-950/90 z-50 hidden flex-col items-center justify-center p-6 text-center">
         <div class="max-w-sm w-full bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-2xl">
             <h3 class="text-xl font-bold mb-4">Compiling Movie</h3>
@@ -599,7 +599,7 @@
             });
         }
 
-        // --- SEARCH LOGIC (FIXED & HAPTIC ENABLED) ---
+        // --- SEARCH LOGIC (DAY-X & HAPTIC ENABLED) ---
         DOM.btnSearch.addEventListener('click', () => {
             vibrate(HAPTIC.tap); 
             handleSearch();
@@ -639,27 +639,66 @@
 
         async function handleSearch() {
             const input = DOM.dateSearchInput.value.trim();
-            const regex = /^(\d{2})-(\d{2})-(\d{4})$/;
-            const match = input.match(regex);
             
-            if (!match) { 
-                triggerSearchError("Invalid date format (DD-MM-YYYY)");
-                return; 
-            }
-            
-            const [_, d, m, y] = match;
-            const isoDate = `${y}-${m}-${d}`;
-            
-            const testDate = new Date(isoDate);
-            if (isNaN(testDate.getTime())) {
-                triggerSearchError("Date does not exist");
+            // Regex definitions
+            const dateRegex = /^(\d{2})-(\d{2})-(\d{4})$/;
+            const dayRegex = /^Day-(\d+)$/i;
+
+            let isoDate;
+            let targetYear, targetMonth;
+
+            if (dayRegex.test(input)) {
+                // Handle Day-X
+                const match = input.match(dayRegex);
+                const dayNum = parseInt(match[1], 10);
+                const currentYear = new Date().getFullYear();
+                
+                if (dayNum < 1 || dayNum > 366) {
+                    triggerSearchError("Invalid Day Number");
+                    return;
+                }
+
+                // Calculate date from day number
+                const calculatedDate = new Date(currentYear, 0, dayNum); // Jan is 0
+                
+                // Validate year didn't rollover (e.g. Day-366 in non-leap year)
+                if (calculatedDate.getFullYear() !== currentYear) {
+                     triggerSearchError(`Day-${dayNum} does not exist in ${currentYear}`);
+                     return;
+                }
+
+                const y = calculatedDate.getFullYear();
+                const m = String(calculatedDate.getMonth() + 1).padStart(2, '0');
+                const d = String(calculatedDate.getDate()).padStart(2, '0');
+                isoDate = `${y}-${m}-${d}`;
+                
+                targetYear = y;
+                targetMonth = calculatedDate.getMonth();
+
+            } else if (dateRegex.test(input)) {
+                // Handle DD-MM-YYYY
+                const match = input.match(dateRegex);
+                const [_, d, m, y] = match;
+                isoDate = `${y}-${m}-${d}`;
+                
+                const testDate = new Date(isoDate);
+                if (isNaN(testDate.getTime()) || testDate.getMonth() + 1 !== parseInt(m)) {
+                    triggerSearchError("Date does not exist");
+                    return;
+                }
+                
+                targetYear = Number(y);
+                targetMonth = Number(m) - 1;
+
+            } else {
+                triggerSearchError("Format: DD-MM-YYYY or Day-X");
                 return;
             }
 
             // Check for clip existence first
             const clip = await getClip(isoDate, APP.mode);
             
-            // FIX: Validate that clip exists AND has actual data
+            // Validate that clip exists AND has actual data
             if (clip && clip.blob && clip.blob.size > 0) {
                 // Success Haptic
                 vibrate(HAPTIC.success);
@@ -670,7 +709,7 @@
                 DOM.dateSearchInput.classList.remove('border-red-500');
                 DOM.dateSearchInput.classList.add('border-slate-700');
 
-                APP.viewDate = new Date(Number(y), Number(m) - 1, 1);
+                APP.viewDate = new Date(targetYear, targetMonth, 1);
                 updateMonthLabel();
                 
                 await renderCalendar();
@@ -1604,10 +1643,10 @@
         });
 
         async function processImportQueue(items, type) {
-            // Filename: type_START_to_END
+            // Filename: type_START_to_END_movie
             const startDate = formatDateDisplay(items[0].date.toISOString().split('T')[0]);
             const endDate = formatDateDisplay(items[items.length - 1].date.toISOString().split('T')[0]);
-            const outputName = `${type}_${startDate}_to_${endDate}`;
+            const outputName = `${type}_${startDate}_to_${endDate}_movie`;
 
             DOM.importStatusLog.textContent = `Compiling ${type} clips...`;
             DOM.importProgressBar.style.width = '0%';
