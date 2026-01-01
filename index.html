@@ -320,7 +320,10 @@
             // Flash State
             flashEnabled: false,
             hasTorch: false,
-            trackRef: null // Reference to the video track for torch
+            trackRef: null, // Reference to the video track for torch
+            
+            // Assets
+            logoImg: null
         };
 
         const DOM = {
@@ -789,12 +792,26 @@
             const video = DOM.cameraPreview;
             const canvas = DOM.processingCanvas;
 
+            // Helper for rounded rect paths
+            const roundRect = (x, y, w, h, r) => {
+                ctx.beginPath();
+                ctx.moveTo(x + r, y);
+                ctx.lineTo(x + w - r, y);
+                ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+                ctx.lineTo(x + w, y + h - r);
+                ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+                ctx.lineTo(x + r, y + h);
+                ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+                ctx.lineTo(x, y + r);
+                ctx.quadraticCurveTo(x, y, x + r, y);
+                ctx.closePath();
+            };
+
             function draw() {
-                if (video.readyState >= 2) { // HAVE_CURRENT_DATA
+                if (video.readyState >= 2) { 
                     const vw = video.videoWidth;
                     const vh = video.videoHeight;
                     
-                    // Update canvas size to match input stream resolution (Stability fix)
                     if (canvas.width !== vw || canvas.height !== vh) {
                         canvas.width = vw;
                         canvas.height = vh;
@@ -803,15 +820,85 @@
                     const cw = canvas.width;
                     const ch = canvas.height;
 
-                    // Recording Logic Mirroring (for Self mode)
+                    // 1. Draw Base Video (Mirrored if 'self')
                     ctx.save();
                     if (APP.mode === 'self') {
                         ctx.translate(cw, 0);
                         ctx.scale(-1, 1);
                     }
-
+                    ctx.filter = 'none';
                     ctx.drawImage(video, 0, 0, cw, ch);
                     ctx.restore();
+
+                    // --- WATERMARK LOGIC (REFINED v3) ---
+                    // Configured for "Tight capsule, specific grey" aesthetics
+                    const margin = cw * 0.04;
+                    const boxHeight = cw * 0.065;
+                    const boxRadius = boxHeight / 2;   // Full capsule radius
+                    const fontSize = boxHeight * 0.45;
+                    const paddingX = boxHeight * 0.5;  // Reduced padding to hug text tightly
+                    
+                    // Parse Date
+                    const [y, m, d] = APP.targetDate.split('-');
+                    const dateObj = new Date(Number(y), Number(m)-1, Number(d));
+                    const dateText = dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase();
+                    const dayNum = getDayOfYear(dateObj);
+                    const dayText = `DAY ${dayNum}`;
+
+                    // Measure content
+                    ctx.font = `700 ${fontSize}px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+                    const logoSize = boxHeight * 0.6;
+                    const gap = boxHeight * 0.4;
+                    
+                    // Left Box Geometry (Logo + Date)
+                    const leftTextWidth = ctx.measureText(dateText).width;
+                    const leftBoxWidth = paddingX + logoSize + gap + leftTextWidth + paddingX;
+                    const leftBoxX = margin;
+                    const leftBoxY = ch - margin - boxHeight;
+
+                    // Right Box Geometry (Day #)
+                    const rightTextWidth = ctx.measureText(dayText).width;
+                    const rightBoxWidth = paddingX + rightTextWidth + paddingX;
+                    const rightBoxX = cw - margin - rightBoxWidth;
+                    const rightBoxY = ch - margin - boxHeight;
+
+                    // 2. Draw Blurred Backgrounds (Frosted Glass)
+                    ctx.save();
+                    roundRect(leftBoxX, leftBoxY, leftBoxWidth, boxHeight, boxRadius);
+                    roundRect(rightBoxX, rightBoxY, rightBoxWidth, boxHeight, boxRadius);
+                    ctx.clip();
+                    
+                    if (APP.mode === 'self') {
+                        ctx.translate(cw, 0);
+                        ctx.scale(-1, 1);
+                    }
+                    ctx.filter = 'blur(12px)';
+                    ctx.drawImage(video, 0, 0, cw, ch);
+                    ctx.restore();
+
+                    // 3. Draw Overlays & Text
+                    const overlayColor = 'rgba(15, 23, 42, 0.55)'; 
+                    const textColor = '#cbcbcb'; // Specific grey color requested
+
+                    // Backgrounds
+                    ctx.fillStyle = overlayColor;
+                    ctx.beginPath(); roundRect(leftBoxX, leftBoxY, leftBoxWidth, boxHeight, boxRadius); ctx.fill();
+                    ctx.beginPath(); roundRect(rightBoxX, rightBoxY, rightBoxWidth, boxHeight, boxRadius); ctx.fill();
+
+                    // Left Box Content
+                    const iconY = leftBoxY + (boxHeight - logoSize) / 2;
+                    const iconX = leftBoxX + paddingX;
+                    
+                    if (APP.logoImg && APP.logoImg.complete && APP.logoImg.naturalHeight !== 0) {
+                        ctx.drawImage(APP.logoImg, iconX, iconY, logoSize, logoSize);
+                    }
+                    
+                    ctx.fillStyle = textColor;
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(dateText, iconX + logoSize + gap, leftBoxY + (boxHeight / 2) + (fontSize * 0.05));
+
+                    // Right Box Content
+                    ctx.fillText(dayText, rightBoxX + paddingX, rightBoxY + (boxHeight / 2) + (fontSize * 0.05));
                 }
                 APP.animationId = requestAnimationFrame(draw);
             }
@@ -1031,6 +1118,10 @@
         initApp();
         async function initApp() {
             try {
+                // Initialize Logo
+                APP.logoImg = new Image();
+                APP.logoImg.src = 'assets/LogoIcon-Grey.svg';
+                
                 await initDB();
                 updateMonthLabel();
                 updateTargetUI();
