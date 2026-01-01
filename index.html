@@ -334,7 +334,14 @@
             storeName: 'clips',
             version: 1,
             db: null,
-            today: new Date().toISOString().split('T')[0],
+            // FIX: Use local date to ensure search/calendar alignment (prevents UTC mismatch)
+            today: (() => {
+                const d = new Date();
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            })(),
             mediaRecorder: null,
             recordedChunks: [],
             cameraStream: null,
@@ -343,7 +350,14 @@
             // New State for V2
             mode: 'self', // 'self' or 'scene'
             viewDate: new Date(), // Tracks month view
-            targetDate: new Date().toISOString().split('T')[0], // Default recording target is today
+            // FIX: Initialize targetDate to local today as well
+            targetDate: (() => {
+                const d = new Date();
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            })(), // Default recording target is today
             sceneCamFacing: 'environment', // default rear for scene
             
             // Rendering loop
@@ -430,6 +444,11 @@
             const [y, m, d] = isoDateString.split('-');
             return `${d}-${m}-${y}`;
         }
+
+        // --- HAPTICS UTILITY ---
+        function vibrate(ms = 15) {
+            if (navigator.vibrate) navigator.vibrate(ms);
+        }
         
         // --- DATABASE ---
         async function initDB() {
@@ -496,8 +515,11 @@
             });
         }
 
-        // --- SEARCH LOGIC (UX IMPROVED) ---
-        DOM.btnSearch.addEventListener('click', handleSearch);
+        // --- SEARCH LOGIC (FIXED: Strict Existence Check + Haptics) ---
+        DOM.btnSearch.addEventListener('click', () => {
+            vibrate(10); // Tap feedback
+            handleSearch();
+        });
         DOM.dateSearchInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') handleSearch();
         });
@@ -523,8 +545,8 @@
             DOM.dateSearchInput.classList.remove('border-slate-700');
             DOM.dateSearchInput.classList.add('border-red-500');
 
-            // Haptic Feedback
-            if (navigator.vibrate) navigator.vibrate(50);
+            // Haptic Feedback for Error
+            vibrate(50);
 
             // Visual Shake
             DOM.searchContainer.classList.add('animate-shake');
@@ -550,21 +572,25 @@
                 return;
             }
 
-            // Success state - ensure errors are cleared
-            DOM.searchError.classList.add('hidden');
-            DOM.searchError.classList.add('opacity-0');
-
-            APP.viewDate = new Date(Number(y), Number(m) - 1, 1);
-            updateMonthLabel();
-            
+            // Check for clip existence first
             const clip = await getClip(isoDate, APP.mode);
             
-            if (clip) {
+            // FIX: Validate that clip exists AND has actual data (blob size > 0)
+            if (clip && clip.blob && clip.blob.size > 0) {
+                // Success: Clear errors, navigate, and show clip
+                DOM.searchError.classList.add('hidden');
+                DOM.searchError.classList.add('opacity-0');
+                DOM.dateSearchInput.classList.remove('border-red-500');
+                DOM.dateSearchInput.classList.add('border-slate-700');
+
+                APP.viewDate = new Date(Number(y), Number(m) - 1, 1);
+                updateMonthLabel();
+                
                 await renderCalendar();
-                openClipModal(isoDate); // Will fallback to fetch
+                openClipModal(isoDate); 
             } else {
-                setTargetDate(isoDate);
-                DOM.statusText.textContent = `Jumped to ${input}`;
+                // Failure: No valid recording found
+                triggerSearchError("No recording found.");
             }
         }
 
@@ -583,8 +609,9 @@
 
         async function renderCalendar() {
             const clips = await getAllClips(APP.mode);
-            // Use Map to store full clip object for instant access
-            const clipMap = new Map(clips.map(c => [c.date, c]));
+            // FIX: Only treat valid video files as clips for the calendar badges
+            const validClips = clips.filter(c => c.blob && c.blob.size > 0);
+            const clipMap = new Map(validClips.map(c => [c.date, c]));
             
             DOM.calendarGrid.innerHTML = '';
             
@@ -623,12 +650,14 @@
         }
 
         DOM.btnPrevMonth.addEventListener('click', () => {
+            vibrate(10); // Haptic
             APP.viewDate.setMonth(APP.viewDate.getMonth() - 1);
             updateMonthLabel();
             renderCalendar();
         });
 
         DOM.btnNextMonth.addEventListener('click', () => {
+            vibrate(10); // Haptic
             APP.viewDate.setMonth(APP.viewDate.getMonth() + 1);
             updateMonthLabel();
             renderCalendar();
@@ -660,8 +689,8 @@
             if (APP.cameraStream) startCamera(); 
         }
 
-        DOM.modeSelf.addEventListener('click', () => setMode('self'));
-        DOM.modeScene.addEventListener('click', () => setMode('scene'));
+        DOM.modeSelf.addEventListener('click', () => { vibrate(10); setMode('self'); });
+        DOM.modeScene.addEventListener('click', () => { vibrate(10); setMode('scene'); });
 
         // --- REPLACE / TARGET LOGIC ---
 
@@ -686,7 +715,7 @@
         
         async function checkTargetStatus() {
             const existing = await getClip(APP.targetDate, APP.mode);
-            if (existing) {
+            if (existing && existing.blob && existing.blob.size > 0) {
                 showDoneState(existing.blob);
             } else {
                 showReadyState();
@@ -706,8 +735,9 @@
                 date = clip.date;
             }
 
-            if (!clip) {
-                console.error("Clip not found for", date);
+            if (!clip || !clip.blob || clip.blob.size === 0) {
+                // Ensure we don't open modal for empty/invalid clips
+                triggerSearchError("Error: Valid recording not found");
                 return;
             }
             
@@ -718,7 +748,6 @@
                 DOM.clipModal.classList.add('flex');
             } catch (e) {
                 console.error("Error displaying video", e);
-                // NO ALERT: alert("Video file unavailable."); 
                 DOM.statusText.textContent = "Error: Video unavailable";
                 return;
             }
@@ -730,7 +759,7 @@
                     // ACTION: Delete
                     
                     // Trigger Haptic on deletion
-                    if (navigator.vibrate) navigator.vibrate(50);
+                    vibrate(50);
                     
                     await deleteClip(date, APP.mode);
                     DOM.clipModal.classList.add('hidden');
@@ -744,6 +773,7 @@
                     lucide.createIcons();
                 } else {
                     // ACTION: Ask for confirmation (First Click)
+                    vibrate(10); // Tap haptic
                     DOM.btnDeleteClip.dataset.state = 'confirm';
                     const originalContent = DOM.btnDeleteClip.innerHTML;
                     
@@ -762,6 +792,7 @@
 
             // REPLACE ACTION
             DOM.btnReplaceClip.onclick = () => {
+                vibrate(10); // Tap haptic
                 // 1. Close modal
                 DOM.clipModal.classList.add('hidden');
                 DOM.clipModal.classList.remove('flex');
@@ -794,13 +825,21 @@
 
         // --- CAMERA & FLASH LOGIC ---
         
-        DOM.btnInit.addEventListener('click', startCamera);
+        DOM.btnInit.addEventListener('click', () => { 
+            vibrate(10); 
+            startCamera(); 
+        });
+        
         DOM.btnSwitchCam.addEventListener('click', () => {
+            vibrate(10);
             APP.sceneCamFacing = APP.sceneCamFacing === 'environment' ? 'user' : 'environment';
             startCamera();
         });
 
-        DOM.btnFlash.addEventListener('click', toggleFlashState);
+        DOM.btnFlash.addEventListener('click', () => {
+            vibrate(10);
+            toggleFlashState();
+        });
 
         function toggleFlashState() {
             APP.flashEnabled = !APP.flashEnabled;
@@ -1008,7 +1047,10 @@
 
         // --- RECORDING LIFECYCLE ---
         
-        DOM.btnRecord.addEventListener('click', startRecording);
+        DOM.btnRecord.addEventListener('click', () => {
+            vibrate(20); // Distinct record start haptic
+            startRecording();
+        });
 
         function startRecording() {
             if (!APP.cameraStream) return;
@@ -1119,6 +1161,7 @@
             DOM.statusText.textContent = "Saved.";
             
             DOM.btnViewClip.onclick = () => {
+                vibrate(10);
                 DOM.modalVideo.src = URL.createObjectURL(blob);
                 DOM.modalDateDisplay.textContent = formatDateDisplay(APP.targetDate);
                 DOM.clipModal.classList.remove('hidden');
@@ -1162,6 +1205,7 @@
         // --- COMPILATION ---
         
         DOM.btnCompile.addEventListener('click', async () => {
+            vibrate(10);
             const clips = await getAllClips(APP.mode);
             const year = APP.viewDate.getFullYear();
             const month = String(APP.viewDate.getMonth() + 1).padStart(2, '0');
@@ -1183,6 +1227,7 @@
         });
 
         DOM.btnCloseModal.addEventListener('click', () => {
+            vibrate(10);
             DOM.compileModal.classList.add('hidden'); DOM.compileModal.classList.remove('flex');
         });
 
@@ -1223,6 +1268,7 @@
 
         // NO ALERT: DOM.btnBackup.addEventListener('click', () => alert("Daily clips..."));
         DOM.btnBackup.addEventListener('click', () => {
+            vibrate(10);
             // Just show a non-intrusive status
             const original = DOM.statusText.textContent;
             DOM.statusText.textContent = "Files are already in Downloads";
