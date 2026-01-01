@@ -445,9 +445,18 @@
             return `${d}-${m}-${y}`;
         }
 
-        // --- HAPTICS UTILITY ---
-        function vibrate(ms = 15) {
-            if (navigator.vibrate) navigator.vibrate(ms);
+        // --- HAPTICS UTILITY (ENHANCED) ---
+        // Configurable patterns for distinct actions
+        const HAPTIC = {
+            tap: 15,          // Standard button/badge tap
+            action: 25,       // Primary actions (Camera Init)
+            success: 35,      // Successful search/recording/save
+            warning: 50,      // Errors, confirm prompts, empty search
+            destructive: [40, 50, 40] // Deleting data (double pulse)
+        };
+
+        function vibrate(pattern) {
+            if (navigator.vibrate) navigator.vibrate(pattern);
         }
         
         // --- DATABASE ---
@@ -515,9 +524,9 @@
             });
         }
 
-        // --- SEARCH LOGIC (FIXED: Strict Existence Check + Haptics) ---
+        // --- SEARCH LOGIC (FIXED & HAPTIC ENABLED) ---
         DOM.btnSearch.addEventListener('click', () => {
-            vibrate(10); // Tap feedback
+            vibrate(HAPTIC.tap); 
             handleSearch();
         });
         DOM.dateSearchInput.addEventListener('keypress', (e) => {
@@ -546,7 +555,7 @@
             DOM.dateSearchInput.classList.add('border-red-500');
 
             // Haptic Feedback for Error
-            vibrate(50);
+            vibrate(HAPTIC.warning);
 
             // Visual Shake
             DOM.searchContainer.classList.add('animate-shake');
@@ -575,9 +584,12 @@
             // Check for clip existence first
             const clip = await getClip(isoDate, APP.mode);
             
-            // FIX: Validate that clip exists AND has actual data (blob size > 0)
+            // FIX: Validate that clip exists AND has actual data
             if (clip && clip.blob && clip.blob.size > 0) {
-                // Success: Clear errors, navigate, and show clip
+                // Success Haptic
+                vibrate(HAPTIC.success);
+
+                // Clear errors, navigate, and show clip
                 DOM.searchError.classList.add('hidden');
                 DOM.searchError.classList.add('opacity-0');
                 DOM.dateSearchInput.classList.remove('border-red-500');
@@ -636,9 +648,15 @@
                 if (clip) {
                     el.classList.add('filled');
                     // Pass the already-loaded clip object directly to avoid async fetch failure
-                    el.onclick = () => openClipModal(clip);
+                    el.onclick = () => {
+                        vibrate(HAPTIC.tap);
+                        openClipModal(clip);
+                    };
                 } else {
-                    el.onclick = () => setTargetDate(dateStr);
+                    el.onclick = () => {
+                        vibrate(HAPTIC.tap);
+                        setTargetDate(dateStr);
+                    };
                 }
 
                 if (isTarget) {
@@ -650,14 +668,14 @@
         }
 
         DOM.btnPrevMonth.addEventListener('click', () => {
-            vibrate(10); // Haptic
+            vibrate(HAPTIC.tap);
             APP.viewDate.setMonth(APP.viewDate.getMonth() - 1);
             updateMonthLabel();
             renderCalendar();
         });
 
         DOM.btnNextMonth.addEventListener('click', () => {
-            vibrate(10); // Haptic
+            vibrate(HAPTIC.tap);
             APP.viewDate.setMonth(APP.viewDate.getMonth() + 1);
             updateMonthLabel();
             renderCalendar();
@@ -689,8 +707,8 @@
             if (APP.cameraStream) startCamera(); 
         }
 
-        DOM.modeSelf.addEventListener('click', () => { vibrate(10); setMode('self'); });
-        DOM.modeScene.addEventListener('click', () => { vibrate(10); setMode('scene'); });
+        DOM.modeSelf.addEventListener('click', () => { vibrate(HAPTIC.tap); setMode('self'); });
+        DOM.modeScene.addEventListener('click', () => { vibrate(HAPTIC.tap); setMode('scene'); });
 
         // --- REPLACE / TARGET LOGIC ---
 
@@ -736,7 +754,6 @@
             }
 
             if (!clip || !clip.blob || clip.blob.size === 0) {
-                // Ensure we don't open modal for empty/invalid clips
                 triggerSearchError("Error: Valid recording not found");
                 return;
             }
@@ -758,8 +775,8 @@
                 if (DOM.btnDeleteClip.dataset.state === 'confirm') {
                     // ACTION: Delete
                     
-                    // Trigger Haptic on deletion
-                    vibrate(50);
+                    // Trigger Destructive Haptic on deletion
+                    vibrate(HAPTIC.destructive);
                     
                     await deleteClip(date, APP.mode);
                     DOM.clipModal.classList.add('hidden');
@@ -773,7 +790,7 @@
                     lucide.createIcons();
                 } else {
                     // ACTION: Ask for confirmation (First Click)
-                    vibrate(10); // Tap haptic
+                    vibrate(HAPTIC.warning); // Attention haptic
                     DOM.btnDeleteClip.dataset.state = 'confirm';
                     const originalContent = DOM.btnDeleteClip.innerHTML;
                     
@@ -792,7 +809,7 @@
 
             // REPLACE ACTION
             DOM.btnReplaceClip.onclick = () => {
-                vibrate(10); // Tap haptic
+                vibrate(HAPTIC.tap); 
                 // 1. Close modal
                 DOM.clipModal.classList.add('hidden');
                 DOM.clipModal.classList.remove('flex');
@@ -817,6 +834,8 @@
             DOM.btnDeleteClip.dataset.state = '';
             DOM.btnDeleteClip.innerHTML = '<i data-lucide="trash-2" class="w-4 h-4"></i> Delete';
             lucide.createIcons();
+            
+            vibrate(HAPTIC.tap);
 
             DOM.clipModal.classList.add('hidden');
             DOM.clipModal.classList.remove('flex');
@@ -826,18 +845,18 @@
         // --- CAMERA & FLASH LOGIC ---
         
         DOM.btnInit.addEventListener('click', () => { 
-            vibrate(10); 
+            vibrate(HAPTIC.action); 
             startCamera(); 
         });
         
         DOM.btnSwitchCam.addEventListener('click', () => {
-            vibrate(10);
+            vibrate(HAPTIC.tap);
             APP.sceneCamFacing = APP.sceneCamFacing === 'environment' ? 'user' : 'environment';
             startCamera();
         });
 
         DOM.btnFlash.addEventListener('click', () => {
-            vibrate(10);
+            vibrate(HAPTIC.tap);
             toggleFlashState();
         });
 
@@ -869,7 +888,6 @@
 
         async function startCamera() {
              if (!window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-                // NO ALERT: alert("Camera requires HTTPS."); 
                 DOM.statusText.textContent = "Error: HTTPS Required";
                 return;
             }
@@ -922,7 +940,6 @@
 
             } catch (err) {
                 console.error(err);
-                // NO ALERT: alert("Camera Error: " + err.name);
                 DOM.statusText.textContent = "Error: " + err.name;
             }
         }
@@ -1048,7 +1065,7 @@
         // --- RECORDING LIFECYCLE ---
         
         DOM.btnRecord.addEventListener('click', () => {
-            vibrate(20); // Distinct record start haptic
+            vibrate(HAPTIC.success); // Success feeling for starting record
             startRecording();
         });
 
@@ -1085,7 +1102,6 @@
                     videoBitsPerSecond: 2500000 
                 });
             } catch (e) {
-                // NO ALERT: alert("Recorder Error: " + e.message);
                 DOM.statusText.textContent = "Rec Error: " + e.message;
                 return;
             }
@@ -1107,8 +1123,8 @@
                 const blob = new Blob(APP.recordedChunks, { type: selectedMime.split(';')[0] });
                 
                 if (blob.size < 5000) {
-                    // NO ALERT: alert("Recording failed (file too small)...");
                     DOM.statusText.textContent = "Error: File too small. Try again.";
+                    vibrate(HAPTIC.warning);
                     setTimeout(() => resetRecorderUI(), 2000);
                     return;
                 }
@@ -1141,6 +1157,7 @@
             downloadFile(blob, `${APP.mode}_${formatDateDisplay(APP.targetDate)}.webm`);
             await renderCalendar();
             showDoneState(blob);
+            vibrate(HAPTIC.success); // Success feeling for save complete
         }
 
         function showDoneState(blob) {
@@ -1161,7 +1178,7 @@
             DOM.statusText.textContent = "Saved.";
             
             DOM.btnViewClip.onclick = () => {
-                vibrate(10);
+                vibrate(HAPTIC.tap);
                 DOM.modalVideo.src = URL.createObjectURL(blob);
                 DOM.modalDateDisplay.textContent = formatDateDisplay(APP.targetDate);
                 DOM.clipModal.classList.remove('hidden');
@@ -1205,7 +1222,7 @@
         // --- COMPILATION ---
         
         DOM.btnCompile.addEventListener('click', async () => {
-            vibrate(10);
+            vibrate(HAPTIC.tap);
             const clips = await getAllClips(APP.mode);
             const year = APP.viewDate.getFullYear();
             const month = String(APP.viewDate.getMonth() + 1).padStart(2, '0');
@@ -1213,9 +1230,8 @@
             const monthClips = clips.filter(c => c.date.startsWith(monthPrefix));
             
             if (monthClips.length < 2) { 
-                // NO ALERT: alert("Need at least 2 clips...");
-                // Just log to console or show brief status as this is a specific action
                 DOM.statusText.textContent = "Needs 2+ clips to compile";
+                vibrate(HAPTIC.warning);
                 return; 
             }
             
@@ -1227,7 +1243,7 @@
         });
 
         DOM.btnCloseModal.addEventListener('click', () => {
-            vibrate(10);
+            vibrate(HAPTIC.tap);
             DOM.compileModal.classList.add('hidden'); DOM.compileModal.classList.remove('flex');
         });
 
@@ -1257,6 +1273,7 @@
             const data = await APP.ffmpeg.readFile('out.webm');
             downloadFile(new Blob([data.buffer], { type: 'video/webm' }), `Movie_${APP.mode}_${APP.viewDate.toISOString().slice(0,7)}.webm`);
             DOM.compileLog.textContent = "Done.";
+            vibrate(HAPTIC.success);
             DOM.btnCloseModal.classList.remove('hidden');
         }
 
@@ -1268,7 +1285,7 @@
 
         // NO ALERT: DOM.btnBackup.addEventListener('click', () => alert("Daily clips..."));
         DOM.btnBackup.addEventListener('click', () => {
-            vibrate(10);
+            vibrate(HAPTIC.tap);
             // Just show a non-intrusive status
             const original = DOM.statusText.textContent;
             DOM.statusText.textContent = "Files are already in Downloads";
