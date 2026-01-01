@@ -445,14 +445,14 @@
             return `${d}-${m}-${y}`;
         }
 
-        // --- HAPTICS UTILITY (ENHANCED) ---
-        // Configurable patterns for distinct actions
+        // --- HAPTICS UTILITY (ENHANCED & BOOSTED) ---
+        // Tuned for perceptibility on mobile devices while remaining intentional
         const HAPTIC = {
-            tap: 15,          // Standard button/badge tap
-            action: 25,       // Primary actions (Camera Init)
-            success: 35,      // Successful search/recording/save
-            warning: 50,      // Errors, confirm prompts, empty search
-            destructive: [40, 50, 40] // Deleting data (double pulse)
+            tap: 35,             // Standard UI tap (was 15)
+            action: 75,          // Primary button actions (was 25)
+            success: 100,        // Success confirmation (was 35)
+            warning: 200,        // Error/Warning buzz (was 50)
+            destructive: [100, 50, 150] // Destructive action (stronger double pulse)
         };
 
         function vibrate(pattern) {
