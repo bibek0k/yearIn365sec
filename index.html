@@ -361,7 +361,7 @@
                     <i data-lucide="upload-cloud" class="w-8 h-8 text-rose-500"></i>
                 </div>
                 <strong class="text-slate-200 mt-2">Click or Drag Videos Here</strong>
-                <p class="text-xs text-slate-500">Supports: self_DD-MM-YYYY.* or scene_DD-MM-YYYY.*</p>
+                <p class="text-xs text-slate-500">Supports: username_self_DD-MM-YYYY.* or scene_DD-MM-YYYY.*</p>
             </label>
 
             <!-- File Lists -->
@@ -546,13 +546,40 @@
         };
 
         // --- INIT ---
-        // Date display logic removed/replaced by new greeting logic
-        
+        // Helper to get safe username for filenames
+        function getSafeUsername() {
+            if (!APP.userName) return 'User';
+            // Remove /BB suffix logic before sanitizing to avoid "NameBB" in filenames
+            let name = APP.userName.replace(/\/BB$/, '');
+            // Replace any char that isn't alphanumeric or hyphen/underscore with empty string
+            return name.replace(/[^a-zA-Z0-9-_]/g, '');
+        }
+
         // Helper to format dates as DD-MM-YYYY for display
         function formatDateDisplay(isoDateString) {
             if (!isoDateString) return '';
-            const [y, m, d] = isoDateString.split('-');
-            return `${d}-${m}-${y}`;
+            
+            // Fix for Date objects (Imported clips use Date objects)
+            if (isoDateString instanceof Date) {
+                const y = isoDateString.getFullYear();
+                const m = String(isoDateString.getMonth() + 1).padStart(2, '0');
+                const d = String(isoDateString.getDate()).padStart(2, '0');
+                return `${d}-${m}-${y}`;
+            }
+
+            // Fix for non-string input
+            if (typeof isoDateString !== 'string') return String(isoDateString);
+
+            // Handle YYYY-MM-DD string
+            if (isoDateString.includes('-')) {
+                const parts = isoDateString.split('-');
+                if (parts.length === 3) {
+                    const [y, m, d] = parts;
+                    return `${d}-${m}-${y}`;
+                }
+            }
+            
+            return String(isoDateString);
         }
 
         // --- GREETING LOGIC ---
@@ -947,9 +974,10 @@
             }
             
             try {
-                // Determine correct filename: self_DD-MM-YYYY or scene_DD-MM-YYYY
+                // Determine correct filename: <username>_<mode>_<date>
                 const safeMode = clip.mode || APP.mode;
-                const fileName = `${safeMode}_${formatDateDisplay(date)}.webm`;
+                const safeName = getSafeUsername();
+                const fileName = `${safeName}_${safeMode}_${formatDateDisplay(date)}.webm`;
                 
                 // Wrap blob in File object for browser compatibility, but primarily rely on the button below
                 const file = new File([clip.blob], fileName, { type: clip.blob.type });
@@ -1390,7 +1418,9 @@
 
         async function handleRecordingComplete(blob) {
             await saveClip(APP.targetDate, APP.mode, blob);
-            downloadFile(blob, `${APP.mode}_${formatDateDisplay(APP.targetDate)}.webm`);
+            // UPDATED: Filename format <username>_<mode>_<date>.webm
+            const safeName = getSafeUsername();
+            downloadFile(blob, `${safeName}_${APP.mode}_${formatDateDisplay(APP.targetDate)}.webm`);
             await renderCalendar();
             showDoneState(blob);
             vibrate(HAPTIC.success); // Success feeling for save complete
@@ -1477,7 +1507,10 @@
             DOM.compileModal.classList.remove('hidden');
             DOM.compileModal.classList.add('flex');
             
-            try { await compileClips(monthClips); }
+            try { 
+                // Internal clips belong to current user
+                await compileClips(monthClips, getSafeUsername()); 
+            }
             catch (err) { DOM.compileLog.innerHTML = `<span class="text-red-400">Error: ${err.message}</span>`; DOM.btnCloseModal.classList.remove('hidden'); }
         });
 
@@ -1486,11 +1519,16 @@
             DOM.compileModal.classList.add('hidden'); DOM.compileModal.classList.remove('flex');
         });
 
-        async function compileClips(items) {
-            // UPDATED: Filename format self_<start>_to_<end>_movie
+        // Updated signature to accept specific username
+        async function compileClips(items, username = 'User') {
+            // UPDATED: Filename format <username>_<mode>_<start>_to_<end>_movie
             const startDate = formatDateDisplay(items[0].date);
             const endDate = formatDateDisplay(items[items.length - 1].date);
-            const outputName = `${APP.mode}_${startDate}_to_${endDate}_movie`;
+            // Derive mode from the first item to ensure consistency (especially for imports)
+            // If items come from internal DB, APP.mode is fine. If import, items have .type property.
+            const mode = items[0].type || APP.mode;
+            
+            const outputName = `${username}_${mode}_${startDate}_to_${endDate}_movie`;
             
             DOM.compileLog.textContent = `Initializing...`;
             DOM.compileProgress.style.width = '0%';
@@ -1509,7 +1547,7 @@
             sourceNode.connect(audioDest);
 
             // 3. Prepare first video to get dimensions
-            const firstFileUrl = URL.createObjectURL(items[0].blob);
+            const firstFileUrl = URL.createObjectURL(items[0].blob || items[0].file); // Handle both DB clip (blob) and File object (file)
             video.src = firstFileUrl;
             await new Promise((resolve) => {
                 video.onloadedmetadata = () => resolve();
@@ -1549,10 +1587,11 @@
             // 5. Playback Loop
             for (let i = 0; i < items.length; i++) {
                 const item = items[i];
-                DOM.compileLog.textContent = `Recording ${formatDateDisplay(item.date)} (${i + 1}/${items.length})`;
+                const dateVal = item.date instanceof Date ? item.date.toISOString().split('T')[0] : item.date;
+                DOM.compileLog.textContent = `Recording ${formatDateDisplay(dateVal)} (${i + 1}/${items.length})`;
                 
                 if (i > 0) {
-                    video.src = URL.createObjectURL(item.blob);
+                    video.src = URL.createObjectURL(item.blob || item.file);
                     await new Promise(r => video.onloadedmetadata = r);
                 }
 
@@ -1705,20 +1744,27 @@
         }
 
         function parseFilename(filename) {
-            // Regex for self_DD-MM-YYYY or scene_DD-MM-YYYY
-            const regex = /^(self|scene)_(\d{2})-(\d{2})-(\d{4}).*$/;
-            const match = filename.match(regex);
+            // Regex for <username>_<mode>_DD-MM-YYYY or legacy <mode>_DD-MM-YYYY
             
-            if (!match) return null;
+            // Format 1: New (With username)
+            const regexNew = /^(.*)_(self|scene)_(\d{2})-(\d{2})-(\d{4}).*$/;
+            const matchNew = filename.match(regexNew);
+            if (matchNew) {
+                const [_, username, type, day, month, year] = matchNew;
+                const date = new Date(year, month - 1, day);
+                return { type, date, username, formattedDate: `${day}/${month}/${year}` };
+            }
+
+            // Format 2: Legacy (No username)
+            const regexOld = /^(self|scene)_(\d{2})-(\d{2})-(\d{4}).*$/;
+            const matchOld = filename.match(regexOld);
+            if (matchOld) {
+                const [_, type, day, month, year] = matchOld;
+                const date = new Date(year, month - 1, day);
+                return { type, date, username: 'Unknown', formattedDate: `${day}/${month}/${year}` };
+            }
             
-            const [_, type, day, month, year] = match;
-            const date = new Date(year, month - 1, day);
-            
-            return {
-                type, 
-                date,
-                formattedDate: `${day}/${month}/${year}` // For display
-            };
+            return null;
         }
 
         function renderImportLists() {
@@ -1729,8 +1775,11 @@
                 }
                 container.innerHTML = items.map(item => `
                     <div class="flex justify-between items-center bg-slate-900 p-2 rounded border border-slate-800">
-                        <span class="truncate">${item.file.name}</span>
-                        <span class="text-[10px] bg-rose-900/30 text-rose-400 px-1.5 py-0.5 rounded">${item.formattedDate}</span>
+                        <div class="flex flex-col overflow-hidden mr-2">
+                            <span class="truncate text-xs text-white font-medium">${item.file.name}</span>
+                            <span class="text-[10px] text-slate-500 truncate">User: ${item.username}</span>
+                        </div>
+                        <span class="text-[10px] bg-rose-900/30 text-rose-400 px-1.5 py-0.5 rounded flex-shrink-0">${item.formattedDate}</span>
                     </div>
                 `).join('');
             };
@@ -1750,12 +1799,31 @@
             vibrate(HAPTIC.action);
 
             try {
-                if (APP.importState.self.length > 0) {
-                    await processImportQueue(APP.importState.self, 'self');
+                // Grouping Logic: User -> Mode -> Date
+                
+                // Helper to group items by username
+                const groupByUsername = (items) => {
+                    const groups = {};
+                    items.forEach(item => {
+                        const user = item.username || 'Unknown';
+                        if (!groups[user]) groups[user] = [];
+                        groups[user].push(item);
+                    });
+                    return groups;
+                };
+
+                // Process Self Clips
+                const selfGroups = groupByUsername(APP.importState.self);
+                for (const user in selfGroups) {
+                    await compileClips(selfGroups[user], user); // Reuse compileClips with specific user
                 }
-                if (APP.importState.scene.length > 0) {
-                    await processImportQueue(APP.importState.scene, 'scene');
+
+                // Process Scene Clips
+                const sceneGroups = groupByUsername(APP.importState.scene);
+                for (const user in sceneGroups) {
+                    await compileClips(sceneGroups[user], user);
                 }
+
                 DOM.importStatusLog.textContent = "All compilations finished!";
                 vibrate(HAPTIC.success);
             } catch (err) {
@@ -1767,92 +1835,6 @@
                 DOM.importDownloadLinks.classList.remove('hidden');
             }
         });
-
-        async function processImportQueue(items, type) {
-            // Filename: type_START_to_END_movie
-            const startDate = formatDateDisplay(items[0].date.toISOString().split('T')[0]);
-            const endDate = formatDateDisplay(items[items.length - 1].date.toISOString().split('T')[0]);
-            const outputName = `${type}_${startDate}_to_${endDate}_movie`;
-
-            DOM.importStatusLog.textContent = `Compiling ${type} clips...`;
-            DOM.importProgressBar.style.width = '0%';
-
-            // 1. Setup Audio & Video
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const audioDest = audioCtx.createMediaStreamDestination();
-            
-            const video = document.createElement('video');
-            video.crossOrigin = "anonymous";
-            video.muted = false; 
-            video.playsInline = true;
-            
-            const sourceNode = audioCtx.createMediaElementSource(video);
-            sourceNode.connect(audioDest);
-
-            // 2. Prepare first video
-            const firstFileUrl = URL.createObjectURL(items[0].file);
-            video.src = firstFileUrl;
-            await new Promise((resolve) => { video.onloadedmetadata = () => resolve(); });
-
-            // 3. Canvas & Recorder
-            const canvas = DOM.importPreviewCanvas;
-            const w = video.videoWidth;
-            const h = video.videoHeight;
-            canvas.width = w;
-            canvas.height = h;
-            const ctx = canvas.getContext('2d');
-
-            const canvasStream = canvas.captureStream(30);
-            const audioTrack = audioDest.stream.getAudioTracks()[0];
-            if (audioTrack) canvasStream.addTrack(audioTrack);
-
-            const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9') 
-                ? 'video/webm; codecs=vp9' 
-                : 'video/webm';
-                
-            const recorder = new MediaRecorder(canvasStream, {
-                mimeType: mimeType,
-                videoBitsPerSecond: 5000000 
-            });
-
-            const chunks = [];
-            recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
-            recorder.start();
-
-            // 4. Playback Loop
-            for (let i = 0; i < items.length; i++) {
-                const item = items[i];
-                DOM.importStatusLog.textContent = `Recording ${item.file.name} (${i + 1}/${items.length})`;
-                
-                if (i > 0) {
-                    video.src = URL.createObjectURL(item.file);
-                    await new Promise(r => video.onloadedmetadata = r);
-                }
-
-                await playAndRecord(video, ctx, w, h);
-                DOM.importProgressBar.style.width = `${((i + 1) / items.length) * 100}%`;
-            }
-
-            // 5. Finalize
-            recorder.stop();
-            DOM.importStatusLog.textContent = `Finalizing ${outputName}...`;
-            await new Promise(resolve => recorder.onstop = resolve);
-
-            const blob = new Blob(chunks, { type: 'video/webm' });
-            const url = URL.createObjectURL(blob);
-
-            // Create Download Button
-            const btn = document.createElement('a');
-            btn.href = url;
-            btn.download = `${outputName}.webm`;
-            btn.className = "block w-full bg-slate-800 hover:bg-slate-700 text-white text-center py-3 rounded-lg border border-slate-700 transition-colors font-medium text-sm";
-            btn.innerHTML = `<i data-lucide="download" class="inline w-4 h-4 mr-2"></i> Download ${outputName}`;
-            
-            DOM.importDownloadLinks.appendChild(btn);
-            lucide.createIcons();
-            
-            audioCtx.close();
-        }
 
         // Boot
         initApp();
