@@ -340,17 +340,44 @@
     </div>
 
     <!-- Compile Modal (Internal Clips) -->
-    <div id="compileModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 hidden flex-col items-center justify-center p-6 text-center">
-        <div class="max-w-sm w-full bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-2xl">
-            <h3 class="text-xl font-bold mb-6 text-white">Compiling Movie</h3>
-            <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden mb-6 border border-slate-800 shadow-inner">
+    <div id="compileModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 hidden flex-col items-center justify-center p-6 transition-opacity duration-300">
+        <div class="relative w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl flex flex-col items-center">
+            
+            <!-- Top Right Close (Cancel/Exit) - Smaller, secondary -->
+            <button id="btnCancelCompile" class="absolute top-4 right-4 p-2 text-slate-600 hover:text-slate-400 transition-colors">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+
+            <!-- Title - Dominant, larger, semi-bold, centered -->
+            <h3 class="text-lg font-semibold text-slate-200 mb-10 tracking-tight">Compiling Month</h3>
+            
+            <!-- Preview Video/Card - Less noise, padding, rounded corners -->
+            <div class="relative w-full aspect-video bg-black rounded-lg overflow-hidden mb-8 shadow-md ring-1 ring-slate-800">
                 <canvas id="compileCanvas" class="w-full h-full object-contain"></canvas>
+                
+                <!-- Status Badge - Smaller, less saturated, status label -->
+                <div id="compileBadge" class="absolute top-3 left-3 bg-slate-900/90 backdrop-blur-sm border border-slate-700/50 px-2 py-1 rounded text-[10px] font-medium text-slate-400 uppercase tracking-wide flex items-center gap-2 transition-colors duration-300">
+                    <div class="w-1.5 h-1.5 bg-current rounded-full animate-pulse opacity-60"></div>
+                    <span id="compileBadgeText">Processing</span>
+                </div>
             </div>
-            <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mb-3">
-                <div id="compileProgress" class="bg-rose-500 h-full w-0 transition-all duration-300 rounded-full"></div>
+
+            <!-- Progress Section - Muted, secondary, slimmer bar -->
+            <div class="w-full flex flex-col gap-3 mb-8">
+                <div class="flex justify-between items-end px-1">
+                    <span id="compileLog" class="text-[10px] font-medium text-slate-500 uppercase tracking-wider">Initializing...</span>
+                    <span id="compilePercent" class="text-[10px] font-mono text-slate-600">0%</span>
+                </div>
+                <!-- Slimmer bar -->
+                <div class="w-full bg-slate-800 h-1 rounded-full overflow-hidden">
+                    <div id="compileProgress" class="bg-slate-500 h-full w-0 transition-all duration-300 rounded-full"></div>
+                </div>
             </div>
-            <p id="compileLog" class="text-[10px] text-slate-500 font-mono uppercase tracking-wider mb-6">Initializing...</p>
-            <button id="btnCloseModal" class="hidden w-full bg-slate-800 text-white py-3.5 rounded-xl hover:bg-slate-700 transition-colors font-semibold text-sm">Close</button>
+
+            <!-- Save & Close Button - Calm, neutral, rounded -->
+            <button id="btnCloseModal" class="hidden w-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white py-3 rounded-xl transition-all font-medium text-sm border border-slate-700/50">
+                Save & Close
+            </button>
         </div>
     </div>
 
@@ -524,8 +551,12 @@
             compileModal: document.getElementById('compileModal'),
             compileProgress: document.getElementById('compileProgress'),
             compileLog: document.getElementById('compileLog'),
+            compilePercent: document.getElementById('compilePercent'),
             btnCloseModal: document.getElementById('btnCloseModal'),
+            btnCancelCompile: document.getElementById('btnCancelCompile'),
             compileCanvas: document.getElementById('compileCanvas'),
+            compileBadge: document.getElementById('compileBadge'),
+            compileBadgeText: document.getElementById('compileBadgeText'),
             
             // Import Compiler
             btnImportCompile: document.getElementById('btnImportCompile'),
@@ -1383,28 +1414,60 @@
                 return; 
             }
             
+            // Reset UI
             DOM.compileModal.classList.remove('hidden');
             DOM.compileModal.classList.add('flex');
+            DOM.btnCloseModal.classList.add('hidden');
+            DOM.compileBadge.classList.remove('hidden');
+            DOM.compileBadgeText.textContent = "Processing";
+            
+            // Apply Calm Start Styles
+            DOM.compileBadge.classList.remove('text-emerald-500', 'border-emerald-500/30');
+            DOM.compileBadge.classList.add('text-slate-400', 'border-slate-700/50');
             
             try { 
                 // Compile internal clips using internal modal UI context
                 await compileClips(monthClips, getSafeUsername(), {
                     canvas: DOM.compileCanvas,
                     progress: DOM.compileProgress,
-                    log: DOM.compileLog
-                }); 
+                    log: DOM.compileLog,
+                    percentEl: DOM.compilePercent
+                });
+                
+                // Success State
+                DOM.btnCloseModal.classList.remove('hidden');
+                DOM.compileLog.textContent = "Compilation Complete!";
+                DOM.compileBadgeText.textContent = "Finished";
+                
+                // Apply Calm Finished Styles
+                DOM.compileBadge.classList.remove('text-slate-400', 'border-slate-700/50');
+                DOM.compileBadge.classList.add('text-emerald-500', 'border-emerald-500/30');
+                
+                vibrate(HAPTIC.success);
             }
-            catch (err) { DOM.compileLog.innerHTML = `<span class="text-red-400">Error: ${err.message}</span>`; DOM.btnCloseModal.classList.remove('hidden'); }
+            catch (err) { 
+                DOM.compileLog.innerHTML = `<span class="text-red-400">Error: ${err.message}</span>`; 
+                DOM.btnCloseModal.classList.remove('hidden'); 
+                DOM.btnCloseModal.textContent = "Close";
+            }
         });
 
         DOM.btnCloseModal.addEventListener('click', () => {
             vibrate(HAPTIC.tap);
-            DOM.compileModal.classList.add('hidden'); DOM.compileModal.classList.remove('flex');
+            DOM.compileModal.classList.add('hidden'); 
+            DOM.compileModal.classList.remove('flex');
+        });
+
+        DOM.btnCancelCompile.addEventListener('click', () => {
+            vibrate(HAPTIC.tap);
+            // Hide modal immediately. The background process will finish or fail silently.
+            DOM.compileModal.classList.add('hidden'); 
+            DOM.compileModal.classList.remove('flex');
         });
 
         // REFACTORED: accepts UI context to fix hidden canvas bug
         async function compileClips(items, username, uiContext) {
-            const { canvas, progress, log } = uiContext;
+            const { canvas, progress, log, percentEl } = uiContext;
             
             const startDate = formatDateDisplay(items[0].date);
             const endDate = formatDateDisplay(items[items.length - 1].date);
@@ -1414,7 +1477,8 @@
             
             log.textContent = `Processing ${username}: Initializing...`;
             progress.style.width = '0%';
-            if(DOM.importPercentDisplay) DOM.importPercentDisplay.textContent = '0%';
+            if(percentEl) percentEl.textContent = '0%';
+            if(DOM.importPercentDisplay && !percentEl) DOM.importPercentDisplay.textContent = '0%';
 
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const audioDest = audioCtx.createMediaStreamDestination();
@@ -1468,7 +1532,10 @@
                 const progressPct = Math.round(((i + 1) / items.length) * 100);
                 
                 log.textContent = `Processing ${username}: Clip ${i + 1}/${items.length}`;
-                if(DOM.importPercentDisplay) DOM.importPercentDisplay.textContent = `${progressPct}%`;
+                
+                if(percentEl) percentEl.textContent = `${progressPct}%`;
+                // Fallback for import modal if not passed explicitly in a clean way (legacy support)
+                if(DOM.importPercentDisplay && !percentEl) DOM.importPercentDisplay.textContent = `${progressPct}%`;
                 
                 if (i > 0) {
                     video.src = URL.createObjectURL(item.blob || item.file);
