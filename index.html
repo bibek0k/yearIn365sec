@@ -174,6 +174,11 @@
         .animate-shake {
             animation: shake 0.4s ease-in-out;
         }
+        
+        /* Custom scrollbar for lists */
+        .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+        .scrollbar-thin::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
     </style>
 </head>
 <body class="min-h-screen flex flex-col items-center safe-pb bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-800 via-slate-900 to-slate-950">
@@ -351,44 +356,48 @@
 
     <!-- NEW: Import & Compile Modal -->
     <div id="importCompileModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 hidden flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto">
-        <div class="relative w-full max-w-2xl bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-2xl flex flex-col gap-6 max-h-full">
-            <h3 class="text-xl font-bold text-center text-white">Import Memories</h3>
+        <div class="relative w-full max-w-2xl bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-2xl flex flex-col gap-6 max-h-[90vh]">
+            <h3 id="importModalTitle" class="text-xl font-bold text-center text-white">Import Memories</h3>
             
-            <!-- Drop Zone -->
-            <label id="dropZone" class="border-2 border-dashed border-slate-700 hover:border-rose-500/50 hover:bg-rose-500/5 bg-slate-800/30 rounded-2xl p-10 text-center transition-all cursor-pointer flex flex-col items-center gap-3 group">
-                <input type="file" id="fileInput" multiple accept="video/*" class="hidden">
-                <div class="p-4 bg-slate-800 rounded-full group-hover:scale-110 transition-transform duration-300">
-                    <i data-lucide="upload-cloud" class="w-8 h-8 text-rose-500"></i>
-                </div>
-                <strong class="text-slate-200 mt-2">Click or Drag Videos Here</strong>
-                <p class="text-xs text-slate-500">Supports: username_self_DD-MM-YYYY.* or scene_DD-MM-YYYY.*</p>
-            </label>
+            <!-- Import Content Area -->
+            <div id="importContentArea" class="flex flex-col gap-6 w-full">
+                <!-- Drop Zone -->
+                <label id="dropZone" class="border-2 border-dashed border-slate-700 hover:border-rose-500/50 hover:bg-rose-500/5 bg-slate-800/30 rounded-2xl p-10 text-center transition-all cursor-pointer flex flex-col items-center gap-3 group">
+                    <input type="file" id="fileInput" multiple accept="video/*" class="hidden">
+                    <div class="p-4 bg-slate-800 rounded-full group-hover:scale-110 transition-transform duration-300">
+                        <i data-lucide="upload-cloud" class="w-8 h-8 text-rose-500"></i>
+                    </div>
+                    <strong class="text-slate-200 mt-2">Click or Drag Videos Here</strong>
+                    <p class="text-xs text-slate-500">Supports: username_self_DD-MM-YYYY.* or scene_DD-MM-YYYY.*</p>
+                </label>
 
-            <!-- File Lists -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div class="bg-slate-950/50 border border-slate-800 rounded-xl p-4">
-                    <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 flex justify-between items-center">
-                        Self Clips <span id="selfCount" class="bg-slate-800 text-slate-300 px-2 rounded-md text-[10px] py-0.5 border border-slate-700">0</span>
-                    </h4>
-                    <div id="selfList" class="text-xs text-slate-500 space-y-1.5 max-h-32 overflow-y-auto scrollbar-thin">No files yet.</div>
-                </div>
-                <div class="bg-slate-950/50 border border-slate-800 rounded-xl p-4">
-                    <h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3 flex justify-between items-center">
-                        Scene Clips <span id="sceneCount" class="bg-slate-800 text-slate-300 px-2 rounded-md text-[10px] py-0.5 border border-slate-700">0</span>
-                    </h4>
-                    <div id="sceneList" class="text-xs text-slate-500 space-y-1.5 max-h-32 overflow-y-auto scrollbar-thin">No files yet.</div>
+                <!-- File Lists Container - Dynamic Per User -->
+                <div id="importListContainer" class="flex flex-col gap-6 w-full max-h-[40vh] overflow-y-auto scrollbar-thin pr-1">
+                    <p class="text-center text-slate-500 text-xs italic py-4">No files added yet.</p>
                 </div>
             </div>
 
             <!-- Progress & Preview Area (Hidden initially) -->
-            <div id="importProgressArea" class="hidden flex flex-col gap-4 border-t border-slate-800 pt-6">
-                <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-slate-800 shadow-inner">
+            <div id="importProgressArea" class="hidden flex flex-col gap-6 items-center w-full animate-fade-in">
+                 <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-slate-800 shadow-2xl shadow-rose-900/10">
                     <canvas id="importPreviewCanvas" class="w-full h-full object-contain"></canvas>
+                    
+                    <!-- Processing Badge Overlay -->
+                    <div class="absolute top-4 left-4 bg-rose-600/90 backdrop-blur text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg uppercase tracking-wide flex items-center gap-2">
+                        <div class="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                        Processing
+                    </div>
                 </div>
-                <div class="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                    <div id="importProgressBar" class="bg-rose-500 h-full w-0 transition-all duration-300 rounded-full"></div>
+                
+                <div class="w-full flex flex-col gap-2">
+                    <div class="flex justify-between items-end">
+                         <p id="importStatusLog" class="text-xs text-slate-300 font-semibold tracking-wide">Initializing...</p>
+                         <p id="importPercentDisplay" class="text-xs text-slate-500 font-mono">0%</p>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                        <div id="importProgressBar" class="bg-gradient-to-r from-rose-500 to-rose-400 h-full w-0 transition-all duration-300 rounded-full"></div>
+                    </div>
                 </div>
-                <p id="importStatusLog" class="text-[10px] text-slate-500 font-mono text-center uppercase tracking-widest">Ready...</p>
             </div>
 
             <!-- Actions -->
@@ -396,7 +405,7 @@
                 <button id="btnStartImportCompile" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-rose-900/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none" disabled>
                     Compile Files
                 </button>
-                <div id="importDownloadLinks" class="flex flex-col gap-2 hidden">
+                <div id="importDownloadLinks" class="flex flex-col gap-2 hidden w-full">
                     <!-- Download buttons injected here -->
                 </div>
                 <button id="btnCloseImportModal" class="w-full text-slate-400 hover:text-white text-sm py-2 transition-colors">Close</button>
@@ -413,7 +422,6 @@
             storeName: 'clips',
             version: 1,
             db: null,
-            // FIX: Use local date to ensure search/calendar alignment (prevents UTC mismatch)
             today: (() => {
                 const d = new Date();
                 const year = d.getFullYear();
@@ -428,14 +436,13 @@
             // New State for V2
             mode: 'self', // 'self' or 'scene'
             viewDate: new Date(), // Tracks month view
-            // FIX: Initialize targetDate to local today as well
             targetDate: (() => {
                 const d = new Date();
                 const year = d.getFullYear();
                 const month = String(d.getMonth() + 1).padStart(2, '0');
                 const day = String(d.getDate()).padStart(2, '0');
                 return `${year}-${month}-${day}`;
-            })(), // Default recording target is today
+            })(),
             sceneCamFacing: 'environment', // default rear for scene
             
             // Rendering loop
@@ -444,12 +451,11 @@
             // Flash State
             flashEnabled: false,
             hasTorch: false,
-            trackRef: null, // Reference to the video track for torch
+            trackRef: null,
             
             // Import Compiler State
             importState: {
-                self: [],
-                scene: [],
+                files: [], // Flat list of all imported files
                 isProcessing: false
             },
             
@@ -457,7 +463,7 @@
             recAudioCtx: null,
 
             // User Data
-            userName: localStorage.getItem('user_name') || null, // Store name locally
+            userName: localStorage.getItem('user_name') || null,
 
             // Assets
             logoImg: null
@@ -465,8 +471,8 @@
 
         const DOM = {
             // Displays
-            greetingLine1: document.getElementById('greetingLine1'), // NEW
-            greetingLine2: document.getElementById('greetingLine2'), // NEW
+            greetingLine1: document.getElementById('greetingLine1'),
+            greetingLine2: document.getElementById('greetingLine2'),
             targetDateDisplay: document.getElementById('targetDateDisplay'),
             targetIndicator: document.getElementById('targetIndicator'),
             monthLabel: document.getElementById('monthLabel'),
@@ -494,7 +500,6 @@
             doneOverlay: document.getElementById('doneOverlay'),
             btnInit: document.getElementById('btnInitCamera'),
             btnRecord: document.getElementById('btnRecord'),
-            btnRetake: document.getElementById('btnRetake'),
             btnSwitchCam: document.getElementById('btnSwitchCam'),
             btnViewClip: document.getElementById('btnViewClip'),
             btnFlash: document.getElementById('btnFlash'),
@@ -512,7 +517,7 @@
             btnCloseClip: document.getElementById('btnCloseClip'),
             btnDeleteClip: document.getElementById('btnDeleteClip'),
             btnReplaceClip: document.getElementById('btnReplaceClip'),
-            btnDownloadClip: document.getElementById('btnDownloadClip'), // NEW
+            btnDownloadClip: document.getElementById('btnDownloadClip'),
             
             // Compile
             btnCompile: document.getElementById('btnCompile'),
@@ -525,17 +530,17 @@
             // Import Compiler
             btnImportCompile: document.getElementById('btnImportCompile'),
             importCompileModal: document.getElementById('importCompileModal'),
+            importModalTitle: document.getElementById('importModalTitle'),
             dropZone: document.getElementById('dropZone'),
             fileInput: document.getElementById('fileInput'),
-            selfList: document.getElementById('selfList'),
-            sceneList: document.getElementById('sceneList'),
-            selfCount: document.getElementById('selfCount'),
-            sceneCount: document.getElementById('sceneCount'),
+            importContentArea: document.getElementById('importContentArea'),
+            importListContainer: document.getElementById('importListContainer'),
             btnStartImportCompile: document.getElementById('btnStartImportCompile'),
             importProgressArea: document.getElementById('importProgressArea'),
             importPreviewCanvas: document.getElementById('importPreviewCanvas'),
             importProgressBar: document.getElementById('importProgressBar'),
             importStatusLog: document.getElementById('importStatusLog'),
+            importPercentDisplay: document.getElementById('importPercentDisplay'),
             importDownloadLinks: document.getElementById('importDownloadLinks'),
             btnCloseImportModal: document.getElementById('btnCloseImportModal'),
 
@@ -546,20 +551,15 @@
         };
 
         // --- INIT ---
-        // Helper to get safe username for filenames
         function getSafeUsername() {
             if (!APP.userName) return 'User';
-            // Remove /BB suffix logic before sanitizing to avoid "NameBB" in filenames
             let name = APP.userName.replace(/\/BB$/, '');
-            // Replace any char that isn't alphanumeric or hyphen/underscore with empty string
             return name.replace(/[^a-zA-Z0-9-_]/g, '');
         }
 
-        // Helper to format dates as DD-MM-YYYY for display
         function formatDateDisplay(isoDateString) {
             if (!isoDateString) return '';
             
-            // Fix for Date objects (Imported clips use Date objects)
             if (isoDateString instanceof Date) {
                 const y = isoDateString.getFullYear();
                 const m = String(isoDateString.getMonth() + 1).padStart(2, '0');
@@ -567,10 +567,8 @@
                 return `${d}-${m}-${y}`;
             }
 
-            // Fix for non-string input
             if (typeof isoDateString !== 'string') return String(isoDateString);
 
-            // Handle YYYY-MM-DD string
             if (isoDateString.includes('-')) {
                 const parts = isoDateString.split('-');
                 if (parts.length === 3) {
@@ -578,7 +576,6 @@
                     return `${d}-${m}-${y}`;
                 }
             }
-            
             return String(isoDateString);
         }
 
@@ -587,46 +584,37 @@
             const now = new Date();
             const hour = now.getHours();
             let timeGreeting = "Good morning";
-            
             if (hour >= 12 && hour < 17) timeGreeting = "Good afternoon";
             else if (hour >= 17) timeGreeting = "Good evening";
 
-            // Date Restoration
-            // Format: "Thursday, January 1"
             const dateOptions = { weekday: 'long', month: 'long', day: 'numeric' };
             const dateStr = now.toLocaleDateString('en-US', dateOptions);
 
             const name = APP.userName;
             let nameGreeting = "Hi,"; 
 
-            // Special Cases logic
             if (name === "Barnita/BB") {
-                // Dynamic compliments for Barnita/BB
                 const adjectives = ["gorgeous", "majestic", "lovely", "radiant", "elegant", "stunning"];
                 const randomAdj = adjectives[Math.floor(Math.random() * adjectives.length)];
                 nameGreeting = `Hi, ${randomAdj} Barnita,`;
             } else if (name === "Bibek/BB") {
                 nameGreeting = "Hi Bibek boss,";
             } else {
-                // Standard Case: Clean name, ensure comma
                 const cleanName = name ? name.replace(/\/BB$/, '') : '';
                 nameGreeting = cleanName ? `Hi ${cleanName},` : "Hi,";
             }
 
-            // Update UI Lines
             DOM.greetingLine1.textContent = nameGreeting;
-            // Append date to line 2 with a separator
             DOM.greetingLine2.innerHTML = `${timeGreeting} <span class="mx-2 text-slate-600 font-light text-lg align-middle">&bull;</span> ${dateStr}`;
         }
 
-        // --- HAPTICS UTILITY (ENHANCED & BOOSTED) ---
-        // Tuned for perceptibility on mobile devices while remaining intentional
+        // --- HAPTICS UTILITY ---
         const HAPTIC = {
-            tap: 35,             // Standard UI tap (was 15)
-            action: 75,          // Primary button actions (was 25)
-            success: 100,        // Success confirmation (was 35)
-            warning: 200,        // Error/Warning buzz (was 50)
-            destructive: [100, 50, 150] // Destructive action (stronger double pulse)
+            tap: 35,
+            action: 75,
+            success: 100,
+            warning: 200,
+            destructive: [100, 50, 150]
         };
 
         function vibrate(pattern) {
@@ -648,7 +636,6 @@
             });
         }
 
-        // Key Format: "mode_YYYY-MM-DD" e.g., "self_2024-03-21"
         function getKey(date, mode) {
             return `${mode}_${date}`;
         }
@@ -698,7 +685,7 @@
             });
         }
 
-        // --- SEARCH LOGIC (DAY-X & HAPTIC ENABLED) ---
+        // --- SEARCH LOGIC ---
         DOM.btnSearch.addEventListener('click', () => {
             vibrate(HAPTIC.tap); 
             handleSearch();
@@ -707,7 +694,6 @@
             if (e.key === 'Enter') handleSearch();
         });
 
-        // Clear error on input
         DOM.dateSearchInput.addEventListener('input', () => {
              DOM.searchError.classList.add('opacity-0', 'pointer-events-none');
              DOM.searchError.classList.remove('translate-y-0');
@@ -718,29 +704,18 @@
         });
 
         function triggerSearchError(msg) {
-            // Update Text
             DOM.searchError.querySelector('span').textContent = msg;
-            
-            // Show Label
             DOM.searchError.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-[-4px]');
             DOM.searchError.classList.add('translate-y-0');
-            
-            // Style Input Container
             DOM.searchContainer.classList.remove('border-slate-700/50');
             DOM.searchContainer.classList.add('border-rose-500/50', 'ring-2', 'ring-rose-500/20');
-
-            // Haptic Feedback for Error
             vibrate(HAPTIC.warning);
-
-            // Visual Shake
             DOM.searchContainer.classList.add('animate-shake');
             setTimeout(() => DOM.searchContainer.classList.remove('animate-shake'), 400);
         }
 
         async function handleSearch() {
             const input = DOM.dateSearchInput.value.trim();
-            
-            // Regex definitions
             const dateRegex = /^(\d{2})-(\d{2})-(\d{4})$/;
             const dayRegex = /^Day-(\d+)$/i;
 
@@ -748,7 +723,6 @@
             let targetYear, targetMonth;
 
             if (dayRegex.test(input)) {
-                // Handle Day-X
                 const match = input.match(dayRegex);
                 const dayNum = parseInt(match[1], 10);
                 const currentYear = new Date().getFullYear();
@@ -758,10 +732,7 @@
                     return;
                 }
 
-                // Calculate date from day number
-                const calculatedDate = new Date(currentYear, 0, dayNum); // Jan is 0
-                
-                // Validate year didn't rollover (e.g. Day-366 in non-leap year)
+                const calculatedDate = new Date(currentYear, 0, dayNum);
                 if (calculatedDate.getFullYear() !== currentYear) {
                      triggerSearchError(`Day-${dayNum} does not exist in ${currentYear}`);
                      return;
@@ -776,7 +747,6 @@
                 targetMonth = calculatedDate.getMonth();
 
             } else if (dateRegex.test(input)) {
-                // Handle DD-MM-YYYY
                 const match = input.match(dateRegex);
                 const [_, d, m, y] = match;
                 isoDate = `${y}-${m}-${d}`;
@@ -795,26 +765,17 @@
                 return;
             }
 
-            // Check for clip existence first
             const clip = await getClip(isoDate, APP.mode);
-            
-            // Validate that clip exists AND has actual data
             if (clip && clip.blob && clip.blob.size > 0) {
-                // Success Haptic
                 vibrate(HAPTIC.success);
-
-                // Clear errors, navigate, and show clip
                 DOM.searchError.classList.add('opacity-0', 'pointer-events-none');
                 DOM.searchContainer.classList.remove('border-rose-500/50', 'ring-2');
                 DOM.searchContainer.classList.add('border-slate-700/50');
-
                 APP.viewDate = new Date(targetYear, targetMonth, 1);
                 updateMonthLabel();
-                
                 await renderCalendar();
                 openClipModal(isoDate); 
             } else {
-                // Failure: No valid recording found
                 triggerSearchError("No recording found.");
             }
         }
@@ -834,7 +795,6 @@
 
         async function renderCalendar() {
             const clips = await getAllClips(APP.mode);
-            // FIX: Only treat valid video files as clips for the calendar badges
             const validClips = clips.filter(c => c.blob && c.blob.size > 0);
             const clipMap = new Map(validClips.map(c => [c.date, c]));
             
@@ -860,7 +820,6 @@
 
                 if (clip) {
                     el.classList.add('filled');
-                    // Pass the already-loaded clip object directly to avoid async fetch failure
                     el.onclick = () => {
                         vibrate(HAPTIC.tap);
                         openClipModal(clip);
@@ -906,7 +865,7 @@
                 DOM.modeScene.classList.replace('text-white', 'text-slate-400');
                 DOM.modeBg.style.transform = 'translateX(0)';
                 DOM.btnSwitchCam.classList.add('hidden');
-                DOM.cameraPreview.classList.add('mirrored'); // CSS Mirror for preview
+                DOM.cameraPreview.classList.add('mirrored');
             } else {
                 DOM.modeScene.classList.replace('text-slate-400', 'text-white');
                 DOM.modeSelf.classList.replace('text-white', 'text-slate-400');
@@ -959,7 +918,6 @@
             let clip;
             let date;
 
-            // Robust handling: If passed a string (legacy), fetch it. If object, use it directly.
             if (typeof clipOrDate === 'string') {
                 date = clipOrDate;
                 clip = await getClip(date, APP.mode);
@@ -974,12 +932,9 @@
             }
             
             try {
-                // Determine correct filename: <username>_<mode>_<date>
                 const safeMode = clip.mode || APP.mode;
                 const safeName = getSafeUsername();
                 const fileName = `${safeName}_${safeMode}_${formatDateDisplay(date)}.webm`;
-                
-                // Wrap blob in File object for browser compatibility, but primarily rely on the button below
                 const file = new File([clip.blob], fileName, { type: clip.blob.type });
                 
                 DOM.modalVideo.src = URL.createObjectURL(file);
@@ -987,7 +942,6 @@
                 DOM.clipModal.classList.remove('hidden');
                 DOM.clipModal.classList.add('flex');
 
-                // NEW: Dedicated Download Button Logic
                 DOM.btnDownloadClip.onclick = () => {
                     vibrate(HAPTIC.tap);
                     downloadFile(clip.blob, fileName);
@@ -999,35 +953,21 @@
                 return;
             }
             
-            // DELETE ACTION (UX IMPROVED: Two-Step Confirm + Haptic)
             DOM.btnDeleteClip.onclick = async () => {
-                // State: 'confirm' means user clicked once
                 if (DOM.btnDeleteClip.dataset.state === 'confirm') {
-                    // ACTION: Delete
-                    
-                    // Trigger Destructive Haptic on deletion
                     vibrate(HAPTIC.destructive);
-                    
                     await deleteClip(date, APP.mode);
                     DOM.clipModal.classList.add('hidden');
                     DOM.clipModal.classList.remove('flex');
-                    await renderCalendar(); // Refresh grid
-                    setTargetDate(APP.today); // Reset target to today
-
-                    // Reset button state
+                    await renderCalendar();
+                    setTargetDate(APP.today);
                     DOM.btnDeleteClip.dataset.state = '';
                     DOM.btnDeleteClip.innerHTML = '<i data-lucide="trash-2" class="w-4 h-4 group-hover:scale-110 transition-transform"></i>';
                     lucide.createIcons();
                 } else {
-                    // ACTION: Ask for confirmation (First Click)
-                    vibrate(HAPTIC.warning); // Attention haptic
+                    vibrate(HAPTIC.warning);
                     DOM.btnDeleteClip.dataset.state = 'confirm';
-                    const originalContent = DOM.btnDeleteClip.innerHTML;
-                    
-                    // FIX: Use correctly sized container for text content to prevent layout jump
                     DOM.btnDeleteClip.innerHTML = '<div class="w-4 h-4 flex items-center justify-center"><span class="text-red-400 font-extrabold text-sm">?</span></div>';
-                    
-                    // Auto-reset after 3 seconds if not confirmed
                     setTimeout(() => {
                         if (DOM.btnDeleteClip.dataset.state === 'confirm') {
                             DOM.btnDeleteClip.dataset.state = '';
@@ -1038,36 +978,24 @@
                 }
             };
 
-            // REPLACE ACTION
             DOM.btnReplaceClip.onclick = () => {
                 vibrate(HAPTIC.tap); 
-                // 1. Close modal
                 DOM.clipModal.classList.add('hidden');
                 DOM.clipModal.classList.remove('flex');
                 DOM.modalVideo.pause();
-
-                // 2. Set target date to this clip's date
                 APP.targetDate = date;
-                
-                // 3. Update UI text manually
                 DOM.targetDateDisplay.textContent = formatDateDisplay(APP.targetDate);
                 DOM.targetIndicator.classList.remove('hidden');
                 DOM.statusText.textContent = `Ready for ${formatDateDisplay(APP.targetDate)}`;
-
-                // 4. Force "Ready" state (Recording Mode) immediately
-                // We bypass checkTargetStatus() so it doesn't show the existing video preview
                 showReadyState();
             };
         }
         
         DOM.btnCloseClip.addEventListener('click', () => {
-            // Reset delete state on close
             DOM.btnDeleteClip.dataset.state = '';
             DOM.btnDeleteClip.innerHTML = '<i data-lucide="trash-2" class="w-4 h-4 group-hover:scale-110 transition-transform"></i>';
             lucide.createIcons();
-            
             vibrate(HAPTIC.tap);
-
             DOM.clipModal.classList.add('hidden');
             DOM.clipModal.classList.remove('flex');
             DOM.modalVideo.pause();
@@ -1123,15 +1051,12 @@
                 return;
             }
 
-            // Cleanup previous
             if (APP.cameraStream) {
                 APP.cameraStream.getTracks().forEach(t => t.stop());
                 if(APP.animationId) cancelAnimationFrame(APP.animationId);
             }
 
             DOM.statusText.textContent = "Starting camera...";
-            
-            // REMOVED forced resolution/aspectRatio constraints for mobile stability
             let constraints = { 
                 audio: true, 
                 video: {
@@ -1150,24 +1075,20 @@
                 DOM.statusText.textContent = `Ready (${APP.mode})`;
                 DOM.statusText.classList.remove('opacity-0');
                 
-                // Mirroring Check
                 if (APP.mode === 'self') {
                     DOM.cameraPreview.classList.add('mirrored');
                 } else {
                     DOM.cameraPreview.classList.remove('mirrored');
                 }
 
-                // Show camera controls
                 DOM.btnFlash.classList.remove('hidden');
                 if (APP.mode === 'scene') DOM.btnSwitchCam.classList.remove('hidden');
 
-                // Check Torch Capabilities
                 const track = APP.cameraStream.getVideoTracks()[0];
                 APP.trackRef = track;
                 const capabilities = track.getCapabilities ? track.getCapabilities() : {};
                 APP.hasTorch = !!capabilities.torch;
                 
-                // START CANVAS LOOP
                 updateCanvasLoop();
 
             } catch (err) {
@@ -1181,7 +1102,6 @@
             const video = DOM.cameraPreview;
             const canvas = DOM.processingCanvas;
 
-            // Helper for rounded rect paths
             const roundRect = (x, y, w, h, r) => {
                 ctx.beginPath();
                 ctx.moveTo(x + r, y);
@@ -1209,7 +1129,6 @@
                     const cw = canvas.width;
                     const ch = canvas.height;
 
-                    // 1. Draw Base Video (Mirrored if 'self')
                     ctx.save();
                     if (APP.mode === 'self') {
                         ctx.translate(cw, 0);
@@ -1219,39 +1138,33 @@
                     ctx.drawImage(video, 0, 0, cw, ch);
                     ctx.restore();
 
-                    // --- WATERMARK LOGIC (REFINED v3) ---
-                    // Configured for "Tight capsule, specific grey" aesthetics
+                    // --- WATERMARK LOGIC ---
                     const margin = cw * 0.04;
                     const boxHeight = cw * 0.065;
-                    const boxRadius = boxHeight / 2;   // Full capsule radius
+                    const boxRadius = boxHeight / 2;
                     const fontSize = boxHeight * 0.45;
-                    const paddingX = boxHeight * 0.5;  // Reduced padding to hug text tightly
+                    const paddingX = boxHeight * 0.5;
                     
-                    // Parse Date
                     const [y, m, d] = APP.targetDate.split('-');
                     const dateObj = new Date(Number(y), Number(m)-1, Number(d));
                     const dateText = dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase();
                     const dayNum = getDayOfYear(dateObj);
                     const dayText = `DAY ${dayNum}`;
 
-                    // Measure content
                     ctx.font = `700 ${fontSize}px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
                     const logoSize = boxHeight * 0.6;
                     const gap = boxHeight * 0.4;
                     
-                    // Left Box Geometry (Logo + Date)
                     const leftTextWidth = ctx.measureText(dateText).width;
                     const leftBoxWidth = paddingX + logoSize + gap + leftTextWidth + paddingX;
                     const leftBoxX = margin;
                     const leftBoxY = ch - margin - boxHeight;
 
-                    // Right Box Geometry (Day #)
                     const rightTextWidth = ctx.measureText(dayText).width;
                     const rightBoxWidth = paddingX + rightTextWidth + paddingX;
                     const rightBoxX = cw - margin - rightBoxWidth;
                     const rightBoxY = ch - margin - boxHeight;
 
-                    // 2. Draw Blurred Backgrounds (Frosted Glass)
                     ctx.save();
                     roundRect(leftBoxX, leftBoxY, leftBoxWidth, boxHeight, boxRadius);
                     roundRect(rightBoxX, rightBoxY, rightBoxWidth, boxHeight, boxRadius);
@@ -1265,16 +1178,13 @@
                     ctx.drawImage(video, 0, 0, cw, ch);
                     ctx.restore();
 
-                    // 3. Draw Overlays & Text
                     const overlayColor = 'rgba(15, 23, 42, 0.55)'; 
-                    const textColor = '#cbcbcb'; // Specific grey color requested
+                    const textColor = '#cbcbcb'; 
 
-                    // Backgrounds
                     ctx.fillStyle = overlayColor;
                     ctx.beginPath(); roundRect(leftBoxX, leftBoxY, leftBoxWidth, boxHeight, boxRadius); ctx.fill();
                     ctx.beginPath(); roundRect(rightBoxX, rightBoxY, rightBoxWidth, boxHeight, boxRadius); ctx.fill();
 
-                    // Left Box Content
                     const iconY = leftBoxY + (boxHeight - logoSize) / 2;
                     const iconX = leftBoxX + paddingX;
                     
@@ -1285,8 +1195,6 @@
                     ctx.fillStyle = textColor;
                     ctx.textBaseline = 'middle';
                     ctx.fillText(dateText, iconX + logoSize + gap, leftBoxY + (boxHeight / 2) + (fontSize * 0.05));
-
-                    // Right Box Content
                     ctx.fillText(dayText, rightBoxX + paddingX, rightBoxY + (boxHeight / 2) + (fontSize * 0.05));
                 }
                 APP.animationId = requestAnimationFrame(draw);
@@ -1297,7 +1205,7 @@
         // --- RECORDING LIFECYCLE ---
         
         DOM.btnRecord.addEventListener('click', () => {
-            vibrate(HAPTIC.success); // Success feeling for starting record
+            vibrate(HAPTIC.success);
             startRecording();
         });
 
@@ -1310,41 +1218,25 @@
             DOM.statusText.textContent = "Recording...";
             APP.recordedChunks = [];
 
-            // 1. Flash Logic (ON) - Screen Flash Fallback
             if (APP.flashEnabled) {
                 if (APP.hasTorch) {
                     applyTorch(true);
                 } else {
-                    // Warm white screen flash via CSS
                     DOM.cameraContainer.classList.add('flash-active');
                 }
             }
 
-            // 2. Codec Selection
             const mimeOptions = ["video/webm;codecs=vp8", "video/webm", "video/mp4"];
             const selectedMime = mimeOptions.find(type => MediaRecorder.isTypeSupported(type));
 
             try {
-                // --- FIX START: Audio/Video Sync & Timestamp Normalization ---
-                // We normalize audio timestamps by piping through a fresh AudioContext/Destination.
-                // This ensures T=0 alignment for the recording regardless of how long the camera/audio stream has been active.
-                
-                // 1. Create Video Track from Canvas
                 const canvasStream = DOM.processingCanvas.captureStream(30); 
                 
-                // 2. Normalize Audio
                 if (APP.cameraStream.getAudioTracks().length > 0) {
-                    // Create temporary context for this specific recording session
                     APP.recAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                    
-                    // Create source from existing camera stream
                     const source = APP.recAudioCtx.createMediaStreamSource(APP.cameraStream);
                     const dest = APP.recAudioCtx.createMediaStreamDestination();
-                    
-                    // Connect source -> dest
                     source.connect(dest);
-                    
-                    // Add the 'fresh' audio track to our recording stream
                     const audioTrack = dest.stream.getAudioTracks()[0];
                     canvasStream.addTrack(audioTrack);
                 }
@@ -1363,19 +1255,15 @@
             };
             
             APP.mediaRecorder.onstop = async () => {
-                // 3. CLEANUP TRACKS (Crucial for resetting state)
-                // Stop the tracks generated by captureStream so they don't linger
                 if (APP.mediaRecorder.stream) {
                     APP.mediaRecorder.stream.getTracks().forEach(track => track.stop());
                 }
 
-                // 4. CLEANUP AUDIO CONTEXT
                 if (APP.recAudioCtx) {
                     try { await APP.recAudioCtx.close(); } catch(e) {}
                     APP.recAudioCtx = null;
                 }
 
-                // Flash Logic (OFF)
                 if (APP.flashEnabled) {
                     if (APP.hasTorch) {
                         applyTorch(false);
@@ -1396,13 +1284,9 @@
                 await handleRecordingComplete(blob);
             };
 
-            // 4. Determine Duration (1s Self / 3s Scene)
             const recordDuration = APP.mode === 'scene' ? 3000 : 1000;
-            // REMOVED BUFFER TO FIX DURATION BUG
-
             APP.mediaRecorder.start(); 
 
-            // UI Animation based on duration
             const circumference = 45 * 2 * Math.PI;
             DOM.progressCircle.style.strokeDashoffset = circumference;
             requestAnimationFrame(() => {
@@ -1410,24 +1294,21 @@
                 DOM.progressCircle.style.strokeDashoffset = '0';
             });
 
-            // 5. Stop after duration
             setTimeout(() => {
                 if (APP.mediaRecorder.state === 'recording') APP.mediaRecorder.stop();
-            }, recordDuration); // Removed buffer
+            }, recordDuration);
         }
 
         async function handleRecordingComplete(blob) {
             await saveClip(APP.targetDate, APP.mode, blob);
-            // UPDATED: Filename format <username>_<mode>_<date>.webm
             const safeName = getSafeUsername();
             downloadFile(blob, `${safeName}_${APP.mode}_${formatDateDisplay(APP.targetDate)}.webm`);
             await renderCalendar();
             showDoneState(blob);
-            vibrate(HAPTIC.success); // Success feeling for save complete
+            vibrate(HAPTIC.success);
         }
 
         function showDoneState(blob) {
-            // Stop camera to save battery/resources while viewing result
             if(APP.cameraStream) {
                APP.cameraStream.getTracks().forEach(t => t.stop());
                APP.cameraStream = null;
@@ -1457,7 +1338,6 @@
              DOM.playbackPreview.classList.add('hidden');
              DOM.cameraPreview.classList.remove('hidden');
              
-             // If we stopped stream, we need to show Init button
              if (!APP.cameraStream) {
                  DOM.recordControls.classList.add('hidden');
                  DOM.startOverlay.classList.remove('opacity-0', 'pointer-events-none');
@@ -1485,7 +1365,7 @@
             DOM.recIcon.classList.remove('animate-pulse');
         }
 
-        // --- COMPILATION (CANVAS BASED) ---
+        // --- COMPILATION CORE (CONTEXT AWARE) ---
         
         DOM.btnCompile.addEventListener('click', async () => {
             vibrate(HAPTIC.tap);
@@ -1495,7 +1375,6 @@
             const monthPrefix = `${year}-${month}`;
             const monthClips = clips.filter(c => c.date.startsWith(monthPrefix));
             
-            // Sort by date ASC
             monthClips.sort((a, b) => a.date.localeCompare(b.date));
 
             if (monthClips.length < 2) { 
@@ -1508,8 +1387,12 @@
             DOM.compileModal.classList.add('flex');
             
             try { 
-                // Internal clips belong to current user
-                await compileClips(monthClips, getSafeUsername()); 
+                // Compile internal clips using internal modal UI context
+                await compileClips(monthClips, getSafeUsername(), {
+                    canvas: DOM.compileCanvas,
+                    progress: DOM.compileProgress,
+                    log: DOM.compileLog
+                }); 
             }
             catch (err) { DOM.compileLog.innerHTML = `<span class="text-red-400">Error: ${err.message}</span>`; DOM.btnCloseModal.classList.remove('hidden'); }
         });
@@ -1519,50 +1402,45 @@
             DOM.compileModal.classList.add('hidden'); DOM.compileModal.classList.remove('flex');
         });
 
-        // Updated signature to accept specific username
-        async function compileClips(items, username = 'User') {
-            // UPDATED: Filename format <username>_<mode>_<start>_to_<end>_movie
+        // REFACTORED: accepts UI context to fix hidden canvas bug
+        async function compileClips(items, username, uiContext) {
+            const { canvas, progress, log } = uiContext;
+            
             const startDate = formatDateDisplay(items[0].date);
             const endDate = formatDateDisplay(items[items.length - 1].date);
-            // Derive mode from the first item to ensure consistency (especially for imports)
-            // If items come from internal DB, APP.mode is fine. If import, items have .type property.
             const mode = items[0].type || APP.mode;
             
             const outputName = `${username}_${mode}_${startDate}_to_${endDate}_movie`;
             
-            DOM.compileLog.textContent = `Initializing...`;
-            DOM.compileProgress.style.width = '0%';
+            log.textContent = `Processing ${username}: Initializing...`;
+            progress.style.width = '0%';
+            if(DOM.importPercentDisplay) DOM.importPercentDisplay.textContent = '0%';
 
-            // 1. Setup Audio Context & Destinations
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const audioDest = audioCtx.createMediaStreamDestination();
             
-            // 2. Setup Video Element (Hidden)
             const video = document.createElement('video');
             video.crossOrigin = "anonymous";
-            video.muted = false; // Must be false to get audio data
+            video.muted = false;
             video.playsInline = true;
             
             const sourceNode = audioCtx.createMediaElementSource(video);
             sourceNode.connect(audioDest);
 
-            // 3. Prepare first video to get dimensions
-            const firstFileUrl = URL.createObjectURL(items[0].blob || items[0].file); // Handle both DB clip (blob) and File object (file)
+            const firstFileUrl = URL.createObjectURL(items[0].blob || items[0].file);
             video.src = firstFileUrl;
             await new Promise((resolve) => {
                 video.onloadedmetadata = () => resolve();
             });
 
-            // Use the canvas in the DOM for preview
-            const canvas = DOM.compileCanvas;
+            // Use passed canvas
             const w = video.videoWidth;
             const h = video.videoHeight;
             canvas.width = w;
             canvas.height = h;
             const ctx = canvas.getContext('2d');
 
-            // 4. Setup MediaRecorder
-            const canvasStream = canvas.captureStream(30); // 30 FPS
+            const canvasStream = canvas.captureStream(30);
             const audioTrack = audioDest.stream.getAudioTracks()[0];
             if (audioTrack) {
                 canvasStream.addTrack(audioTrack);
@@ -1584,11 +1462,13 @@
 
             recorder.start();
 
-            // 5. Playback Loop
             for (let i = 0; i < items.length; i++) {
                 const item = items[i];
                 const dateVal = item.date instanceof Date ? item.date.toISOString().split('T')[0] : item.date;
-                DOM.compileLog.textContent = `Recording ${formatDateDisplay(dateVal)} (${i + 1}/${items.length})`;
+                const progressPct = Math.round(((i + 1) / items.length) * 100);
+                
+                log.textContent = `Processing ${username}: Clip ${i + 1}/${items.length}`;
+                if(DOM.importPercentDisplay) DOM.importPercentDisplay.textContent = `${progressPct}%`;
                 
                 if (i > 0) {
                     video.src = URL.createObjectURL(item.blob || item.file);
@@ -1597,28 +1477,23 @@
 
                 await playAndRecord(video, ctx, w, h);
                 
-                DOM.compileProgress.style.width = `${((i + 1) / items.length) * 100}%`;
+                progress.style.width = `${progressPct}%`;
             }
 
-            // 6. Finalize
             recorder.stop();
-            DOM.compileLog.textContent = `Finalizing...`;
+            log.textContent = `Processing ${username}: Finalizing...`;
 
             await new Promise(resolve => recorder.onstop = resolve);
 
             const blob = new Blob(chunks, { type: 'video/webm' });
             downloadFile(blob, `${outputName}.webm`);
             
-            DOM.compileLog.textContent = "Done.";
-            vibrate(HAPTIC.success);
-            DOM.btnCloseModal.classList.remove('hidden');
-            
             audioCtx.close();
+            
+            // Return blob so we can append download link if needed
+            return { blob, name: `${outputName}.webm` };
         }
 
-        /**
-         * Helper: Plays video from start to finish while drawing to canvas
-         */
         function playAndRecord(video, ctx, targetW, targetH) {
             return new Promise((resolve, reject) => {
                 video.currentTime = 0;
@@ -1648,7 +1523,7 @@
                 
                 video.onerror = (e) => {
                     console.error("Video Error", e);
-                    resolve(); // Skip broken videos
+                    resolve(); 
                 };
 
                 video.play().then(() => {
@@ -1666,7 +1541,7 @@
             document.body.appendChild(a); a.click(); document.body.removeChild(a);
         }
 
-        // --- IMPORT COMPILER LOGIC (NEW) ---
+        // --- IMPORT COMPILER LOGIC (FIXED) ---
         DOM.btnImportCompile.addEventListener('click', () => {
             vibrate(HAPTIC.tap);
             DOM.importCompileModal.classList.remove('hidden');
@@ -1679,16 +1554,14 @@
             DOM.importCompileModal.classList.remove('flex');
             
             // Reset state
-            APP.importState.self = [];
-            APP.importState.scene = [];
-            DOM.selfList.innerHTML = 'No files yet.';
-            DOM.sceneList.innerHTML = 'No files yet.';
-            DOM.selfCount.textContent = '0';
-            DOM.sceneCount.textContent = '0';
+            APP.importState.files = [];
+            DOM.importListContainer.innerHTML = '<p class="text-center text-slate-500 text-xs italic py-4">No files added yet.</p>';
             DOM.btnStartImportCompile.disabled = true;
             DOM.importProgressArea.classList.add('hidden');
+            DOM.importContentArea.classList.remove('hidden'); // Show dropzone again
             DOM.importDownloadLinks.classList.add('hidden');
             DOM.importDownloadLinks.innerHTML = '';
+            DOM.importModalTitle.textContent = "Import Memories";
         });
 
         // Drag & Drop
@@ -1717,36 +1590,34 @@
             const files = Array.from(fileList);
             vibrate(HAPTIC.tap);
 
-            // Reset UI for fresh batch or append? Let's reset for simplicity based on compiler.html logic
-            APP.importState.self = [];
-            APP.importState.scene = [];
-            DOM.importDownloadLinks.classList.add('hidden');
-            DOM.importDownloadLinks.innerHTML = '';
+            // FIX: Append files instead of resetting to avoid "upload twice" confusion
+            // Create a Set of existing filenames to avoid duplicates in current session
+            const existingNames = new Set(APP.importState.files.map(f => f.file.name));
 
+            let addedCount = 0;
             files.forEach(file => {
-                const parsed = parseFilename(file.name);
-                if (parsed) {
-                    const item = { file, ...parsed };
-                    if (parsed.type === 'self') APP.importState.self.push(item);
-                    if (parsed.type === 'scene') APP.importState.scene.push(item);
+                if (!existingNames.has(file.name)) {
+                    const parsed = parseFilename(file.name);
+                    if (parsed) {
+                        APP.importState.files.push({ file, ...parsed });
+                        addedCount++;
+                    }
                 }
             });
 
-            // Sort
-            const dateSorter = (a, b) => a.date - b.date;
-            APP.importState.self.sort(dateSorter);
-            APP.importState.scene.sort(dateSorter);
+            // Sort main list by date
+            APP.importState.files.sort((a, b) => a.date - b.date);
 
             renderImportLists();
             
-            const hasFiles = APP.importState.self.length > 0 || APP.importState.scene.length > 0;
+            const hasFiles = APP.importState.files.length > 0;
             DOM.btnStartImportCompile.disabled = !hasFiles;
+            
+            // Clear input so selecting same files works again if needed
+            DOM.fileInput.value = ''; 
         }
 
         function parseFilename(filename) {
-            // Regex for <username>_<mode>_DD-MM-YYYY or legacy <mode>_DD-MM-YYYY
-            
-            // Format 1: New (With username)
             const regexNew = /^(.*)_(self|scene)_(\d{2})-(\d{2})-(\d{4}).*$/;
             const matchNew = filename.match(regexNew);
             if (matchNew) {
@@ -1755,7 +1626,6 @@
                 return { type, date, username, formattedDate: `${day}/${month}/${year}` };
             }
 
-            // Format 2: Legacy (No username)
             const regexOld = /^(self|scene)_(\d{2})-(\d{2})-(\d{4}).*$/;
             const matchOld = filename.match(regexOld);
             if (matchOld) {
@@ -1768,63 +1638,119 @@
         }
 
         function renderImportLists() {
-            const renderGroup = (items, container) => {
-                if (items.length === 0) {
-                    container.innerHTML = 'No files found.';
-                    return;
-                }
-                container.innerHTML = items.map(item => `
-                    <div class="flex justify-between items-center bg-slate-900 p-2 rounded border border-slate-800">
-                        <div class="flex flex-col overflow-hidden mr-2">
-                            <span class="truncate text-xs text-white font-medium">${item.file.name}</span>
-                            <span class="text-[10px] text-slate-500 truncate">User: ${item.username}</span>
-                        </div>
-                        <span class="text-[10px] bg-rose-900/30 text-rose-400 px-1.5 py-0.5 rounded flex-shrink-0">${item.formattedDate}</span>
-                    </div>
-                `).join('');
-            };
+            const container = DOM.importListContainer;
+            container.innerHTML = '';
 
-            renderGroup(APP.importState.self, DOM.selfList);
-            renderGroup(APP.importState.scene, DOM.sceneList);
+            if (APP.importState.files.length === 0) {
+                container.innerHTML = '<p class="text-center text-slate-500 text-xs italic py-4">No files added yet.</p>';
+                return;
+            }
 
-            DOM.selfCount.textContent = APP.importState.self.length;
-            DOM.sceneCount.textContent = APP.importState.scene.length;
+            // Group by User
+            const filesByUser = {};
+            APP.importState.files.forEach(item => {
+                const user = item.username;
+                if (!filesByUser[user]) filesByUser[user] = { self: [], scene: [] };
+                if (item.type === 'self') filesByUser[user].self.push(item);
+                if (item.type === 'scene') filesByUser[user].scene.push(item);
+            });
+
+            // Iterate Users
+            for (const [username, groups] of Object.entries(filesByUser)) {
+                // User Wrapper
+                const userSection = document.createElement('div');
+                userSection.className = 'w-full bg-slate-950/50 border border-slate-800 rounded-xl p-4 flex flex-col gap-4';
+                
+                // User Header
+                const header = document.createElement('h3');
+                header.className = 'text-sm font-bold text-white flex items-center gap-2 border-b border-slate-800 pb-2';
+                header.innerHTML = `<i data-lucide="user" class="w-4 h-4 text-rose-500"></i> ${username}`;
+                userSection.appendChild(header);
+
+                // Grid for Self/Scene (New Preview Flow)
+                const grid = document.createElement('div');
+                grid.className = 'grid grid-cols-1 md:grid-cols-2 gap-4';
+
+                // Helper to render sub-lists
+                const renderSubList = (title, items) => {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'flex flex-col gap-2';
+                    wrapper.innerHTML = `<h4 class="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 flex justify-between">${title} <span class="bg-slate-800 text-slate-300 px-2 rounded-md text-[10px] border border-slate-700">${items.length}</span></h4>`;
+                    const listDiv = document.createElement('div');
+                    listDiv.className = 'text-xs text-slate-500 space-y-1.5 max-h-32 overflow-y-auto scrollbar-thin';
+                    
+                    if(items.length === 0) {
+                        listDiv.innerHTML = '<span class="italic opacity-50 pl-1">No clips</span>';
+                    } else {
+                        items.sort((a,b) => a.date - b.date).forEach(item => {
+                            listDiv.innerHTML += `
+                                <div class="flex justify-between items-center bg-slate-900 p-2 rounded border border-slate-800 hover:border-slate-700 transition-colors">
+                                    <span class="truncate text-xs text-white font-medium w-2/3">${item.file.name}</span>
+                                    <span class="text-[10px] bg-rose-900/30 text-rose-400 px-1.5 py-0.5 rounded flex-shrink-0 font-mono">${item.formattedDate}</span>
+                                </div>`;
+                        });
+                    }
+                    wrapper.appendChild(listDiv);
+                    return wrapper;
+                };
+
+                grid.appendChild(renderSubList('Self Clips', groups.self));
+                grid.appendChild(renderSubList('Scene Clips', groups.scene));
+
+                userSection.appendChild(grid);
+                container.appendChild(userSection);
+            }
+            lucide.createIcons();
         }
 
         DOM.btnStartImportCompile.addEventListener('click', async () => {
             if (APP.importState.isProcessing) return;
             APP.importState.isProcessing = true;
             DOM.btnStartImportCompile.disabled = true;
-            DOM.importProgressArea.classList.remove('hidden');
             vibrate(HAPTIC.action);
+
+            // TRANSITION TO PROCESSING VIEW
+            DOM.importContentArea.classList.add('hidden'); // Hide list
+            DOM.importProgressArea.classList.remove('hidden'); // Show progress
+            DOM.importModalTitle.textContent = "Compiling Memories...";
+            DOM.importDownloadLinks.classList.add('hidden');
 
             try {
                 // Grouping Logic: User -> Mode -> Date
-                
-                // Helper to group items by username
-                const groupByUsername = (items) => {
-                    const groups = {};
-                    items.forEach(item => {
-                        const user = item.username || 'Unknown';
-                        if (!groups[user]) groups[user] = [];
-                        groups[user].push(item);
-                    });
-                    return groups;
+                const filesByUser = {};
+                APP.importState.files.forEach(item => {
+                    const user = item.username;
+                    if (!filesByUser[user]) filesByUser[user] = { self: [], scene: [] };
+                    if (item.type === 'self') filesByUser[user].self.push(item);
+                    if (item.type === 'scene') filesByUser[user].scene.push(item);
+                });
+
+                // Context for Import Compilation (Visible Elements)
+                const importUIContext = {
+                    canvas: DOM.importPreviewCanvas,
+                    progress: DOM.importProgressBar,
+                    log: DOM.importStatusLog
                 };
 
-                // Process Self Clips
-                const selfGroups = groupByUsername(APP.importState.self);
-                for (const user in selfGroups) {
-                    await compileClips(selfGroups[user], user); // Reuse compileClips with specific user
-                }
+                // Iterate Users Sequentially
+                for (const [username, groups] of Object.entries(filesByUser)) {
+                    // Sort by Date
+                    groups.self.sort((a, b) => a.date - b.date);
+                    groups.scene.sort((a, b) => a.date - b.date);
 
-                // Process Scene Clips
-                const sceneGroups = groupByUsername(APP.importState.scene);
-                for (const user in sceneGroups) {
-                    await compileClips(sceneGroups[user], user);
+                    if (groups.self.length > 0) {
+                        const res = await compileClips(groups.self, username, importUIContext);
+                        addDownloadLink(res.blob, res.name);
+                    }
+                    if (groups.scene.length > 0) {
+                        const res = await compileClips(groups.scene, username, importUIContext);
+                        addDownloadLink(res.blob, res.name);
+                    }
                 }
 
                 DOM.importStatusLog.textContent = "All compilations finished!";
+                DOM.importPercentDisplay.textContent = "100%";
+                DOM.importProgressBar.style.width = "100%";
                 vibrate(HAPTIC.success);
             } catch (err) {
                 console.error(err);
@@ -1833,8 +1759,30 @@
             } finally {
                 APP.importState.isProcessing = false;
                 DOM.importDownloadLinks.classList.remove('hidden');
+                DOM.btnStartImportCompile.textContent = "Compile Again";
+                DOM.btnStartImportCompile.disabled = false;
             }
         });
+
+        function addDownloadLink(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const btn = document.createElement('a');
+            btn.href = url;
+            btn.download = filename;
+            btn.className = 'flex items-center justify-between bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white p-4 rounded-xl transition-all group';
+            btn.innerHTML = `
+                <div class="flex items-center gap-3">
+                    <div class="bg-rose-600/20 text-rose-500 p-2 rounded-lg">
+                        <i data-lucide="video" class="w-5 h-5"></i>
+                    </div>
+                    <span class="text-sm font-semibold truncate max-w-[200px]">${filename}</span>
+                </div>
+                <i data-lucide="download" class="w-4 h-4 text-slate-400 group-hover:text-white"></i>
+            `;
+            DOM.importDownloadLinks.appendChild(btn);
+            DOM.importDownloadLinks.classList.remove('hidden');
+            lucide.createIcons();
+        }
 
         // Boot
         initApp();
