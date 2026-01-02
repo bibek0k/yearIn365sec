@@ -1487,7 +1487,11 @@
         });
 
         async function compileClips(items) {
-            const outputName = `Movie_${APP.mode}_${APP.viewDate.toISOString().slice(0,7)}`;
+            // UPDATED: Filename format self_<start>_to_<end>_movie
+            const startDate = formatDateDisplay(items[0].date);
+            const endDate = formatDateDisplay(items[items.length - 1].date);
+            const outputName = `${APP.mode}_${startDate}_to_${endDate}_movie`;
+            
             DOM.compileLog.textContent = `Initializing...`;
             DOM.compileProgress.style.width = '0%';
 
