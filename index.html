@@ -1320,8 +1320,9 @@
             video.style.zIndex = '-100';
             document.body.appendChild(video);
             
+            // Wait for enough data to render first frame
             await new Promise((resolve, reject) => {
-                video.onloadedmetadata = resolve;
+                video.onloadeddata = resolve; // Fired when first frame is loaded
                 video.onerror = reject;
             });
             
@@ -1331,6 +1332,19 @@
             canvas.width = w;
             canvas.height = h;
             const ctx = canvas.getContext('2d');
+
+            // --- PRE-RENDER FIRST FRAME ---
+            // Ensure we are at start
+            video.currentTime = 0;
+            
+            // Ensure video is ready to draw
+            if (video.readyState < 2) {
+                await new Promise(r => video.addEventListener('canplay', r, {once:true}));
+            }
+
+            // Draw the first frame immediately to canvas so it's not black
+            ctx.drawImage(video, 0, 0, w, h);
+            drawWatermark(ctx, w, h, dateString, video);
 
             // Recorder setup
             const stream = canvas.captureStream(30); 
@@ -1360,6 +1374,7 @@
             const chunks = [];
             recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
             
+            // Start recorder NOW, canvas is already populated with Frame 0
             recorder.start();
             
             // Render Loop with fallback
