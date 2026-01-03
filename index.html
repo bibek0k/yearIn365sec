@@ -22,8 +22,21 @@
             --text-muted: #94a3b8;
         }
 
+        /* Animated Gradient Background */
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
         body {
+            /* Fallback */
             background-color: var(--bg);
+            /* Fluid Animated Gradient */
+            background: linear-gradient(-45deg, #1e293b, #0f172a, #020617, #1e1b4b);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            
             color: var(--text-main);
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             -webkit-font-smoothing: antialiased;
@@ -179,9 +192,24 @@
         .scrollbar-thin::-webkit-scrollbar { width: 4px; }
         .scrollbar-thin::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
         .scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+
+        /* Loader Animation */
+        .spinner {
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top: 3px solid #fff;
+            width: 20px;
+            height: 20px;
+            -webkit-animation: spin 1s linear infinite; /* Safari */
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
-<body class="min-h-screen flex flex-col items-center safe-pb bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-800 via-slate-900 to-slate-950">
+<body class="min-h-screen flex flex-col items-center safe-pb">
 
     <!-- Header & Mode Switch -->
     <header class="w-full max-w-5xl px-6 py-8 flex flex-col gap-8 z-10 animate-fade-in">
@@ -325,8 +353,9 @@
             <div class="p-5 flex justify-between items-center bg-slate-900 sticky bottom-0 z-20 border-t border-slate-800">
                 <button id="btnCloseClip" class="text-slate-400 hover:text-white text-xs font-semibold uppercase tracking-wider transition-colors px-2">Close</button>
                 <div class="flex gap-3">
-                    <button id="btnDownloadClip" class="bg-slate-800 hover:bg-slate-700 text-slate-200 p-2.5 rounded-full transition-colors border border-slate-700">
-                        <i data-lucide="download" class="w-4 h-4"></i>
+                    <button id="btnDownloadClip" class="bg-slate-800 hover:bg-slate-700 text-slate-200 p-2.5 rounded-full transition-colors border border-slate-700 flex items-center justify-center">
+                        <span id="dlIconContainer" class="flex items-center justify-center"><i data-lucide="download" class="w-4 h-4"></i></span>
+                        <div id="dlSpinner" class="hidden spinner w-4 h-4"></div>
                     </button>
                     <button id="btnReplaceClip" class="bg-slate-800 hover:bg-slate-700 text-blue-400 p-2.5 rounded-full transition-colors border border-slate-700">
                         <i data-lucide="refresh-cw" class="w-4 h-4"></i>
@@ -545,6 +574,8 @@
             btnDeleteClip: document.getElementById('btnDeleteClip'),
             btnReplaceClip: document.getElementById('btnReplaceClip'),
             btnDownloadClip: document.getElementById('btnDownloadClip'),
+            dlIconContainer: document.getElementById('dlIconContainer'),
+            dlSpinner: document.getElementById('dlSpinner'),
             
             // Compile
             btnCompile: document.getElementById('btnCompile'),
@@ -963,19 +994,38 @@
             }
             
             try {
-                const safeMode = clip.mode || APP.mode;
-                const safeName = getSafeUsername();
-                const fileName = `${safeName}_${safeMode}_${formatDateDisplay(date)}.webm`;
-                const file = new File([clip.blob], fileName, { type: clip.blob.type });
-                
+                // We show the CLEAN video in the player
+                const file = new File([clip.blob], "preview.webm", { type: clip.blob.type });
                 DOM.modalVideo.src = URL.createObjectURL(file);
                 DOM.modalDateDisplay.textContent = formatDateDisplay(date);
                 DOM.clipModal.classList.remove('hidden');
                 DOM.clipModal.classList.add('flex');
 
-                DOM.btnDownloadClip.onclick = () => {
+                // NEW: Download triggers the watermark process
+                DOM.btnDownloadClip.onclick = async () => {
+                    if (DOM.btnDownloadClip.disabled) return;
                     vibrate(HAPTIC.tap);
-                    downloadFile(clip.blob, fileName);
+                    
+                    // Show Loader
+                    DOM.btnDownloadClip.disabled = true;
+                    DOM.dlIconContainer.classList.add('hidden');
+                    DOM.dlSpinner.classList.remove('hidden');
+
+                    try {
+                        const watermarkedBlob = await processWatermarkedDownload(clip.blob, clip.date, APP.mode);
+                        const safeMode = clip.mode || APP.mode;
+                        const safeName = getSafeUsername();
+                        const fileName = `${safeName}_${safeMode}_${formatDateDisplay(date)}.webm`;
+                        downloadFile(watermarkedBlob, fileName);
+                    } catch (err) {
+                        console.error("Watermark download failed", err);
+                        alert("Failed to process download. Please try again.");
+                    } finally {
+                        // Reset Button
+                        DOM.btnDownloadClip.disabled = false;
+                        DOM.dlIconContainer.classList.remove('hidden');
+                        DOM.dlSpinner.classList.add('hidden');
+                    }
                 };
 
             } catch (e) {
@@ -1128,24 +1178,11 @@
             }
         }
 
+        // --- NEW: CLEAN RECORDING LOOP ---
         function updateCanvasLoop() {
             const ctx = DOM.processingCanvas.getContext('2d');
             const video = DOM.cameraPreview;
             const canvas = DOM.processingCanvas;
-
-            const roundRect = (x, y, w, h, r) => {
-                ctx.beginPath();
-                ctx.moveTo(x + r, y);
-                ctx.lineTo(x + w - r, y);
-                ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-                ctx.lineTo(x + w, y + h - r);
-                ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-                ctx.lineTo(x + r, y + h);
-                ctx.quadraticCurveTo(x, y, x + h, y + h - r);
-                ctx.lineTo(x, y + r);
-                ctx.quadraticCurveTo(x, y, x + r, y);
-                ctx.closePath();
-            };
 
             function draw() {
                 if (video.readyState >= 2) { 
@@ -1165,73 +1202,220 @@
                         ctx.translate(cw, 0);
                         ctx.scale(-1, 1);
                     }
-                    ctx.filter = 'none';
                     ctx.drawImage(video, 0, 0, cw, ch);
                     ctx.restore();
-
-                    // --- WATERMARK LOGIC ---
-                    const margin = cw * 0.04;
-                    const boxHeight = cw * 0.065;
-                    const boxRadius = boxHeight / 2;
-                    const fontSize = boxHeight * 0.45;
-                    const paddingX = boxHeight * 0.5;
-                    
-                    const [y, m, d] = APP.targetDate.split('-');
-                    const dateObj = new Date(Number(y), Number(m)-1, Number(d));
-                    const dateText = dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase();
-                    const dayNum = getDayOfYear(dateObj);
-                    const dayText = `DAY ${dayNum}`;
-
-                    ctx.font = `700 ${fontSize}px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-                    const logoSize = boxHeight * 0.6;
-                    const gap = boxHeight * 0.4;
-                    
-                    const leftTextWidth = ctx.measureText(dateText).width;
-                    const leftBoxWidth = paddingX + logoSize + gap + leftTextWidth + paddingX;
-                    const leftBoxX = margin;
-                    const leftBoxY = ch - margin - boxHeight;
-
-                    const rightTextWidth = ctx.measureText(dayText).width;
-                    const rightBoxWidth = paddingX + rightTextWidth + paddingX;
-                    const rightBoxX = cw - margin - rightBoxWidth;
-                    const rightBoxY = ch - margin - boxHeight;
-
-                    ctx.save();
-                    roundRect(leftBoxX, leftBoxY, leftBoxWidth, boxHeight, boxRadius);
-                    roundRect(rightBoxX, rightBoxY, rightBoxWidth, boxHeight, boxRadius);
-                    ctx.clip();
-                    
-                    if (APP.mode === 'self') {
-                        ctx.translate(cw, 0);
-                        ctx.scale(-1, 1);
-                    }
-                    ctx.filter = 'blur(12px)';
-                    ctx.drawImage(video, 0, 0, cw, ch);
-                    ctx.restore();
-
-                    const overlayColor = 'rgba(15, 23, 42, 0.55)'; 
-                    const textColor = '#cbcbcb'; 
-
-                    ctx.fillStyle = overlayColor;
-                    ctx.beginPath(); roundRect(leftBoxX, leftBoxY, leftBoxWidth, boxHeight, boxRadius); ctx.fill();
-                    ctx.beginPath(); roundRect(rightBoxX, rightBoxY, rightBoxWidth, boxHeight, boxRadius); ctx.fill();
-
-                    const iconY = leftBoxY + (boxHeight - logoSize) / 2;
-                    const iconX = leftBoxX + paddingX;
-                    
-                    if (APP.logoImg && APP.logoImg.complete && APP.logoImg.naturalHeight !== 0) {
-                        ctx.drawImage(APP.logoImg, iconX, iconY, logoSize, logoSize);
-                    }
-                    
-                    ctx.fillStyle = textColor;
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(dateText, iconX + logoSize + gap, leftBoxY + (boxHeight / 2) + (fontSize * 0.05));
-                    ctx.fillText(dayText, rightBoxX + paddingX, rightBoxY + (boxHeight / 2) + (fontSize * 0.05));
                 }
                 APP.animationId = requestAnimationFrame(draw);
             }
             draw();
         }
+
+        // --- NEW: WATERMARK LOGIC ISOLATED & FIXES ---
+        
+        // Helper: Pure path definition (no beginPath inside)
+        function drawRoundedRectPath(ctx, x, y, w, h, r) {
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y);
+            ctx.quadraticCurveTo(x + w, y, x + w, y + r); // Top-right
+            ctx.lineTo(x + w, y + h - r);
+            ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h); // Bottom-right
+            ctx.lineTo(x + r, y + h);
+            ctx.quadraticCurveTo(x, y + h, x, y + h - r); // Bottom-left (FIXED)
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y); // Top-left
+        }
+
+        // UPDATED: Now accepts sourceElement (the video) to enable blur effect
+        function drawWatermark(ctx, cw, ch, dateString, sourceElement) {
+            ctx.save(); // Protect context
+
+            const margin = cw * 0.04;
+            const boxHeight = cw * 0.065;
+            const boxRadius = boxHeight / 2;
+            const fontSize = boxHeight * 0.45;
+            const paddingX = boxHeight * 0.5;
+            
+            // Robust Date Parsing
+            let y, m, d;
+            if (dateString && dateString.includes('-')) {
+                 [y, m, d] = dateString.split('-');
+            } else {
+                 const now = new Date();
+                 y = now.getFullYear(); m = now.getMonth()+1; d = now.getDate();
+            }
+            
+            const dateObj = new Date(Number(y), Number(m)-1, Number(d));
+            const dateText = dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase();
+            const dayNum = getDayOfYear(dateObj);
+            const dayText = `DAY ${dayNum}`;
+
+            ctx.font = `700 ${fontSize}px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+            const logoSize = boxHeight * 0.6;
+            const gap = boxHeight * 0.4;
+            
+            const leftTextWidth = ctx.measureText(dateText).width;
+            const leftBoxWidth = paddingX + logoSize + gap + leftTextWidth + paddingX;
+            const leftBoxX = margin;
+            const leftBoxY = ch - margin - boxHeight;
+
+            const rightTextWidth = ctx.measureText(dayText).width;
+            const rightBoxWidth = paddingX + rightTextWidth + paddingX;
+            const rightBoxX = cw - margin - rightBoxWidth;
+            const rightBoxY = ch - margin - boxHeight;
+
+            // Updated overlay opacity for subtle look (0.3)
+            const overlayColor = 'rgba(15, 23, 42, 0.3)'; 
+            const textColor = '#cbcbcb'; 
+            
+            // --- LEFT BOX (With Blur) ---
+            ctx.save();
+            ctx.beginPath(); 
+            drawRoundedRectPath(ctx, leftBoxX, leftBoxY, leftBoxWidth, boxHeight, boxRadius); 
+            ctx.clip(); // Clip to box shape
+
+            if (sourceElement) {
+                ctx.filter = 'blur(8px)'; // The blurred background effect
+                // Draw video again, clipped to this box. 
+                // Since canvas matches video size, 0,0 is correct.
+                ctx.drawImage(sourceElement, 0, 0, cw, ch);
+            }
+            ctx.filter = 'none'; // Reset filter
+            ctx.fillStyle = overlayColor;
+            ctx.fill(); // Fill subtle overlay
+            ctx.restore();
+
+            // --- RIGHT BOX (With Blur) ---
+            ctx.save();
+            ctx.beginPath(); 
+            drawRoundedRectPath(ctx, rightBoxX, rightBoxY, rightBoxWidth, boxHeight, boxRadius); 
+            ctx.clip();
+
+            if (sourceElement) {
+                ctx.filter = 'blur(8px)';
+                ctx.drawImage(sourceElement, 0, 0, cw, ch);
+            }
+            ctx.filter = 'none';
+            ctx.fillStyle = overlayColor;
+            ctx.fill();
+            ctx.restore();
+
+            // --- CONTENT (Text/Icon) ---
+            const iconY = leftBoxY + (boxHeight - logoSize) / 2;
+            const iconX = leftBoxX + paddingX;
+            
+            if (APP.logoImg && APP.logoImg.complete && APP.logoImg.naturalHeight !== 0) {
+                ctx.drawImage(APP.logoImg, iconX, iconY, logoSize, logoSize);
+            }
+            
+            ctx.fillStyle = textColor;
+            ctx.textBaseline = 'middle';
+            ctx.fillText(dateText, iconX + logoSize + gap, leftBoxY + (boxHeight / 2) + (fontSize * 0.05));
+            ctx.fillText(dayText, rightBoxX + paddingX, rightBoxY + (boxHeight / 2) + (fontSize * 0.05));
+            
+            ctx.restore();
+        }
+
+        // --- NEW: POST-PROCESS WATERMARK DOWNLOADER (ROBUST) ---
+        async function processWatermarkedDownload(cleanBlob, dateString, mode) {
+            // Create video element
+            const video = document.createElement('video');
+            video.src = URL.createObjectURL(cleanBlob);
+            video.muted = false; // Must be false to capture audio via createMediaElementSource
+            video.playsInline = true;
+            video.crossOrigin = "anonymous";
+            
+            // CRITICAL FIX: Append to DOM (hidden) so rAF works reliably
+            video.style.position = 'absolute';
+            video.style.top = '0';
+            video.style.left = '0';
+            video.style.opacity = '0';
+            video.style.pointerEvents = 'none';
+            video.style.zIndex = '-100';
+            document.body.appendChild(video);
+            
+            await new Promise((resolve, reject) => {
+                video.onloadedmetadata = resolve;
+                video.onerror = reject;
+            });
+            
+            const w = video.videoWidth;
+            const h = video.videoHeight;
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+
+            // Recorder setup
+            const stream = canvas.captureStream(30); 
+            
+            // Audio pass-through
+            let audioContext, sourceNode, audioDest;
+            if (cleanBlob.type.includes('webm') || cleanBlob.type.includes('mp4')) {
+                 try {
+                     audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                     sourceNode = audioContext.createMediaElementSource(video);
+                     audioDest = audioContext.createMediaStreamDestination();
+                     sourceNode.connect(audioDest);
+                     const audioTrack = audioDest.stream.getAudioTracks()[0];
+                     if (audioTrack) stream.addTrack(audioTrack);
+                 } catch(e) { console.warn("Audio context failed", e); }
+            }
+
+            const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9') 
+                ? 'video/webm; codecs=vp9' 
+                : 'video/webm';
+            
+            const recorder = new MediaRecorder(stream, {
+                mimeType: mimeType,
+                videoBitsPerSecond: 5000000 
+            });
+
+            const chunks = [];
+            recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+            
+            recorder.start();
+            
+            // Render Loop with fallback
+            await new Promise((resolve, reject) => {
+                video.onended = () => {
+                    recorder.stop();
+                    resolve();
+                };
+                
+                // Use requestVideoFrameCallback if available for perfect sync, else rAF
+                const requestFrame = (cb) => {
+                    if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(cb);
+                    else requestAnimationFrame(cb);
+                };
+
+                function step() {
+                    if (video.paused || video.ended) return;
+                    
+                    ctx.drawImage(video, 0, 0, w, h);
+                    // Pass video element as source for blur effect
+                    drawWatermark(ctx, w, h, dateString, video);
+                    
+                    requestFrame(step);
+                }
+                
+                video.play()
+                    .then(() => step())
+                    .catch(e => {
+                        console.error("Playback failed", e);
+                        reject(e);
+                    });
+            });
+
+            await new Promise(r => recorder.onstop = r);
+            
+            // Cleanup
+            if(audioContext) audioContext.close();
+            document.body.removeChild(video);
+            URL.revokeObjectURL(video.src);
+
+            return new Blob(chunks, { type: 'video/webm' });
+        }
+
 
         // --- RECORDING LIFECYCLE ---
         
@@ -1330,12 +1514,22 @@
             }, recordDuration);
         }
 
-        async function handleRecordingComplete(blob) {
-            await saveClip(APP.targetDate, APP.mode, blob);
-            const safeName = getSafeUsername();
-            downloadFile(blob, `${safeName}_${APP.mode}_${formatDateDisplay(APP.targetDate)}.webm`);
+        async function handleRecordingComplete(cleanBlob) {
+            // 1. Save CLEAN version to DB
+            await saveClip(APP.targetDate, APP.mode, cleanBlob);
+            
+            // 2. Prepare Watermarked Download
+            DOM.statusText.textContent = "Processing Download...";
+            try {
+                const watermarkedBlob = await processWatermarkedDownload(cleanBlob, APP.targetDate, APP.mode);
+                const safeName = getSafeUsername();
+                downloadFile(watermarkedBlob, `${safeName}_${APP.mode}_${formatDateDisplay(APP.targetDate)}.webm`);
+            } catch(e) {
+                console.error("Watermark generation failed", e);
+            }
+
             await renderCalendar();
-            showDoneState(blob);
+            showDoneState(cleanBlob); // Show CLEAN video in preview
             vibrate(HAPTIC.success);
         }
 
@@ -1357,10 +1551,10 @@
             
             DOM.btnViewClip.onclick = () => {
                 vibrate(HAPTIC.tap);
-                DOM.modalVideo.src = URL.createObjectURL(blob);
-                DOM.modalDateDisplay.textContent = formatDateDisplay(APP.targetDate);
-                DOM.clipModal.classList.remove('hidden');
-                DOM.clipModal.classList.add('flex');
+                // openClipModal handles logic for "Review"
+                // We pass the blob directly to avoid DB fetch lag
+                const tempClip = { date: APP.targetDate, mode: APP.mode, blob: blob };
+                openClipModal(tempClip);
             };
         }
         
@@ -1432,7 +1626,7 @@
                     progress: DOM.compileProgress,
                     log: DOM.compileLog,
                     percentEl: DOM.compilePercent
-                });
+                }, true);
                 
                 // Success State
                 DOM.btnCloseModal.classList.remove('hidden');
@@ -1466,7 +1660,7 @@
         });
 
         // REFACTORED: accepts UI context to fix hidden canvas bug
-        async function compileClips(items, username, uiContext) {
+        async function compileClips(items, username, uiContext, addWatermark = false) {
             const { canvas, progress, log, percentEl } = uiContext;
             
             const startDate = formatDateDisplay(items[0].date);
@@ -1534,7 +1728,7 @@
                 log.textContent = `Processing ${username}: Clip ${i + 1}/${items.length}`;
                 
                 if(percentEl) percentEl.textContent = `${progressPct}%`;
-                // Fallback for import modal if not passed explicitly in a clean way (legacy support)
+                // Fallback to import modal element if needed
                 if(DOM.importPercentDisplay && !percentEl) DOM.importPercentDisplay.textContent = `${progressPct}%`;
                 
                 if (i > 0) {
@@ -1542,7 +1736,7 @@
                     await new Promise(r => video.onloadedmetadata = r);
                 }
 
-                await playAndRecord(video, ctx, w, h);
+                await playAndRecord(video, ctx, w, h, dateVal, addWatermark);
                 
                 progress.style.width = `${progressPct}%`;
             }
@@ -1557,11 +1751,10 @@
             
             audioCtx.close();
             
-            // Return blob so we can append download link if needed
             return { blob, name: `${outputName}.webm` };
         }
 
-        function playAndRecord(video, ctx, targetW, targetH) {
+        function playAndRecord(video, ctx, targetW, targetH, dateString, addWatermark) {
             return new Promise((resolve, reject) => {
                 video.currentTime = 0;
                 
@@ -1580,6 +1773,10 @@
                     const dy = (targetH - dh) / 2;
 
                     ctx.drawImage(video, dx, dy, dw, dh);
+                    
+                    if (addWatermark && dateString) {
+                        drawWatermark(ctx, targetW, targetH, dateString, video);
+                    }
                     
                     requestAnimationFrame(draw);
                 };
@@ -1620,7 +1817,6 @@
             DOM.importCompileModal.classList.add('hidden');
             DOM.importCompileModal.classList.remove('flex');
             
-            // Reset state
             APP.importState.files = [];
             DOM.importListContainer.innerHTML = '<p class="text-center text-slate-500 text-xs italic py-4">No files added yet.</p>';
             DOM.btnStartImportCompile.disabled = true;
@@ -1657,8 +1853,6 @@
             const files = Array.from(fileList);
             vibrate(HAPTIC.tap);
 
-            // FIX: Append files instead of resetting to avoid "upload twice" confusion
-            // Create a Set of existing filenames to avoid duplicates in current session
             const existingNames = new Set(APP.importState.files.map(f => f.file.name));
 
             let addedCount = 0;
@@ -1672,7 +1866,6 @@
                 }
             });
 
-            // Sort main list by date
             APP.importState.files.sort((a, b) => a.date - b.date);
 
             renderImportLists();
@@ -1680,7 +1873,6 @@
             const hasFiles = APP.importState.files.length > 0;
             DOM.btnStartImportCompile.disabled = !hasFiles;
             
-            // Clear input so selecting same files works again if needed
             DOM.fileInput.value = ''; 
         }
 
@@ -1792,16 +1984,13 @@
                     if (item.type === 'scene') filesByUser[user].scene.push(item);
                 });
 
-                // Context for Import Compilation (Visible Elements)
                 const importUIContext = {
                     canvas: DOM.importPreviewCanvas,
                     progress: DOM.importProgressBar,
                     log: DOM.importStatusLog
                 };
 
-                // Iterate Users Sequentially
                 for (const [username, groups] of Object.entries(filesByUser)) {
-                    // Sort by Date
                     groups.self.sort((a, b) => a.date - b.date);
                     groups.scene.sort((a, b) => a.date - b.date);
 
