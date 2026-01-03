@@ -512,6 +512,12 @@
             logoImg: null
         };
 
+        // --- NEW: TIMEOUT HELPER ---
+        const withTimeout = (promise, ms, errorMsg) => Promise.race([
+            promise,
+            new Promise((_, reject) => setTimeout(() => reject(new Error(errorMsg)), ms))
+        ]);
+
         const DOM = {
             // Displays
             greetingLine1: document.getElementById('greetingLine1'),
@@ -1302,120 +1308,224 @@
             ctx.restore();
         }
 
-        // --- NEW: POST-PROCESS WATERMARK DOWNLOADER (ROBUST) ---
+        // --- FIXED: POST-PROCESS WATERMARK DOWNLOADER (NO BLACK FRAME) ---
         async function processWatermarkedDownload(cleanBlob, dateString, mode) {
-            // Create video element
-            const video = document.createElement('video');
-            video.src = URL.createObjectURL(cleanBlob);
-            video.muted = false; // Must be false to capture audio via createMediaElementSource
-            video.playsInline = true;
-            video.crossOrigin = "anonymous";
-            
-            // CRITICAL FIX: Append to DOM (hidden) so rAF works reliably
-            video.style.position = 'absolute';
-            video.style.top = '0';
-            video.style.left = '0';
-            video.style.opacity = '0';
-            video.style.pointerEvents = 'none';
-            video.style.zIndex = '-100';
-            document.body.appendChild(video);
-            
-            // Wait for enough data to render first frame
-            await new Promise((resolve, reject) => {
-                video.onloadeddata = resolve; // Fired when first frame is loaded
-                video.onerror = reject;
-            });
-            
-            const w = video.videoWidth;
-            const h = video.videoHeight;
-            const canvas = document.createElement('canvas');
-            canvas.width = w;
-            canvas.height = h;
-            const ctx = canvas.getContext('2d');
-
-            // --- PRE-RENDER FIRST FRAME ---
-            // Ensure we are at start
-            video.currentTime = 0;
-            
-            // Ensure video is ready to draw
-            if (video.readyState < 2) {
-                await new Promise(r => video.addEventListener('canplay', r, {once:true}));
-            }
-
-            // Draw the first frame immediately to canvas so it's not black
-            ctx.drawImage(video, 0, 0, w, h);
-            drawWatermark(ctx, w, h, dateString, video);
-
-            // Recorder setup
-            const stream = canvas.captureStream(30); 
-            
-            // Audio pass-through
-            let audioContext, sourceNode, audioDest;
-            if (cleanBlob.type.includes('webm') || cleanBlob.type.includes('mp4')) {
-                 try {
-                     audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                     sourceNode = audioContext.createMediaElementSource(video);
-                     audioDest = audioContext.createMediaStreamDestination();
-                     sourceNode.connect(audioDest);
-                     const audioTrack = audioDest.stream.getAudioTracks()[0];
-                     if (audioTrack) stream.addTrack(audioTrack);
-                 } catch(e) { console.warn("Audio context failed", e); }
-            }
-
-            const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9') 
-                ? 'video/webm; codecs=vp9' 
-                : 'video/webm';
-            
-            const recorder = new MediaRecorder(stream, {
-                mimeType: mimeType,
-                videoBitsPerSecond: 5000000 
-            });
-
-            const chunks = [];
-            recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
-            
-            // Start recorder NOW, canvas is already populated with Frame 0
-            recorder.start();
-            
-            // Render Loop with fallback
-            await new Promise((resolve, reject) => {
-                video.onended = () => {
-                    recorder.stop();
-                    resolve();
-                };
+            try {
+                // Create video element
+                const video = document.createElement('video');
+                video.src = URL.createObjectURL(cleanBlob);
+                video.muted = false; // Must be false to capture audio via createMediaElementSource
+                video.playsInline = true;
+                video.crossOrigin = "anonymous";
                 
-                // Use requestVideoFrameCallback if available for perfect sync, else rAF
-                const requestFrame = (cb) => {
-                    if (video.requestVideoFrameCallback) video.requestVideoFrameCallback(cb);
-                    else requestAnimationFrame(cb);
-                };
-
-                function step() {
-                    if (video.paused || video.ended) return;
-                    
-                    ctx.drawImage(video, 0, 0, w, h);
-                    // Pass video element as source for blur effect
-                    drawWatermark(ctx, w, h, dateString, video);
-                    
-                    requestFrame(step);
+                // CRITICAL FIX: Append to DOM (hidden) so rAF works reliably
+                video.style.position = 'absolute';
+                video.style.top = '0';
+                video.style.left = '0';
+                video.style.opacity = '0';
+                video.style.pointerEvents = 'none';
+                video.style.zIndex = '-100';
+                document.body.appendChild(video);
+                
+                // Step 1: Wait for video metadata to load
+                await new Promise((resolve, reject) => {
+                    video.onloadedmetadata = resolve;
+                    video.onerror = reject;
+                    setTimeout(() => reject(new Error('Video metadata load timeout')), 10000);
+                });
+                
+                // Step 2: Seek to first valid frame (0.033s ≈ 1 frame at 30fps)
+                video.currentTime = 0.033;
+                
+                // Wait for seek to complete
+                await new Promise((resolve, reject) => {
+                    video.onseeked = resolve;
+                    video.onerror = reject;
+                    setTimeout(() => reject(new Error('Video seek timeout')), 5000);
+                });
+                
+                // Step 3: Wait for frame data to be fully decoded
+                await new Promise((resolve) => {
+                    const checkReady = () => {
+                        if (video.readyState >= 2) { // HAVE_CURRENT_DATA or better
+                            resolve();
+                        } else {
+                            setTimeout(checkReady, 50);
+                        }
+                    };
+                    checkReady();
+                });
+                
+                // Step 4: Additional buffer to ensure frame is fully ready
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // Step 5: Validate video dimensions
+                const w = video.videoWidth;
+                const h = video.videoHeight;
+                
+                if (w === 0 || h === 0) {
+                    throw new Error('Invalid video dimensions');
                 }
                 
-                video.play()
-                    .then(() => step())
-                    .catch(e => {
-                        console.error("Playback failed", e);
+                // Setup canvas
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                
+                // Step 6: Draw and validate first frame
+                ctx.drawImage(video, 0, 0, w, h);
+                drawWatermark(ctx, w, h, dateString, video);
+                
+                // Verify canvas isn't blank by sampling center pixel
+                const imageData = ctx.getImageData(w / 2, h / 2, 1, 1);
+                const isBlank = imageData.data[0] === 0 && imageData.data[1] === 0 && imageData.data[2] === 0;
+                
+                if (isBlank) {
+                    // Retry drawing after one more frame delay
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    ctx.drawImage(video, 0, 0, w, h);
+                    drawWatermark(ctx, w, h, dateString, video);
+                }
+                
+                // Step 7: Setup canvas stream (BEFORE starting recorder)
+                const stream = canvas.captureStream(30);
+                
+                // Step 8: Setup audio pass-through
+                let audioContext, sourceNode, audioDest;
+                if (cleanBlob.type.includes('webm') || cleanBlob.type.includes('mp4')) {
+                    try {
+                        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                        
+                        // Resume if suspended (critical for mobile)
+                        if (audioContext.state === 'suspended') {
+                            await audioContext.resume();
+                        }
+                        
+                        sourceNode = audioContext.createMediaElementSource(video);
+                        audioDest = audioContext.createMediaStreamDestination();
+                        sourceNode.connect(audioDest);
+                        const audioTrack = audioDest.stream.getAudioTracks()[0];
+                        if (audioTrack) stream.addTrack(audioTrack);
+                    } catch(e) { 
+                        console.warn("Audio context failed", e); 
+                    }
+                }
+                
+                // Step 9: Setup MediaRecorder
+                const mimeType = MediaRecorder.isTypeSupported('video/webm; codecs=vp9') 
+                    ? 'video/webm; codecs=vp9' 
+                    : 'video/webm';
+                
+                const recorder = new MediaRecorder(stream, {
+                    mimeType: mimeType,
+                    videoBitsPerSecond: 5000000 
+                });
+                
+                const chunks = [];
+                recorder.ondataavailable = e => { 
+                    if (e.data.size > 0) chunks.push(e.data); 
+                };
+                
+                // Step 10: Define render loop (but don't start yet)
+                let renderLoopActive = false;
+                
+                const requestFrame = (cb) => {
+                    if (video.requestVideoFrameCallback) {
+                        video.requestVideoFrameCallback(cb);
+                    } else {
+                        requestAnimationFrame(cb);
+                    }
+                };
+                
+                function renderLoop() {
+                    if (video.paused || video.ended) {
+                        renderLoopActive = false;
+                        return;
+                    }
+                    
+                    ctx.drawImage(video, 0, 0, w, h);
+                    drawWatermark(ctx, w, h, dateString, video);
+                    
+                    requestFrame(renderLoop);
+                }
+                
+                // Step 11: Reset video to start for final playback
+                video.currentTime = 0;
+                await new Promise(resolve => {
+                    video.onseeked = resolve;
+                    setTimeout(resolve, 100); // Fallback
+                });
+                
+                // Step 12: Start playback and wait for 'playing' event
+                const playingPromise = new Promise((resolve, reject) => {
+                    video.onplaying = () => {
+                        renderLoopActive = true;
+                        resolve();
+                    };
+                    video.onerror = reject;
+                    setTimeout(() => reject(new Error('Video play timeout')), 5000);
+                });
+                
+                await video.play();
+                await playingPromise;
+                
+                // Step 13: Start render loop immediately
+                renderLoop();
+                
+                // Step 14: Buffer delay to ensure render loop has populated canvas stream
+                await new Promise(resolve => setTimeout(resolve, 150));
+                
+                // Step 15: NOW start the recorder (canvas already has valid frames)
+                recorder.start();
+                
+                // Step 16: Wait for video to complete
+                await new Promise((resolve, reject) => {
+                    video.onended = () => {
+                        renderLoopActive = false;
+                        recorder.stop();
+                        resolve();
+                    };
+                    video.onerror = (e) => {
+                        console.error("Video playback error", e);
                         reject(e);
-                    });
-            });
-
-            await new Promise(r => recorder.onstop = r);
-            
-            // Cleanup
-            if(audioContext) audioContext.close();
-            document.body.removeChild(video);
-            URL.revokeObjectURL(video.src);
-
-            return new Blob(chunks, { type: 'video/webm' });
+                    };
+                });
+                
+                // Step 17: Wait for recorder to finish
+                await new Promise(resolve => {
+                    recorder.onstop = resolve;
+                    setTimeout(resolve, 1000); // Fallback timeout
+                });
+                
+                // Step 18: Cleanup
+                if (audioContext) {
+                    try { await audioContext.close(); } catch(e) {}
+                }
+                document.body.removeChild(video);
+                URL.revokeObjectURL(video.src);
+                
+                // Step 19: Create and return final blob
+                if (chunks.length === 0) {
+                    throw new Error('No video data recorded');
+                }
+                
+                return new Blob(chunks, { type: 'video/webm' });
+                
+            } catch (error) {
+                console.error('processWatermarkedDownload error:', error);
+                
+                // Cleanup on error
+                const videos = document.querySelectorAll('video[style*="z-index: -100"]');
+                videos.forEach(v => {
+                    try {
+                        if (v.parentNode) document.body.removeChild(v);
+                        if (v.src) URL.revokeObjectURL(v.src);
+                    } catch(e) {}
+                });
+                
+                throw error;
+            }
         }
 
 
@@ -1520,14 +1630,37 @@
             // 1. Save CLEAN version to DB
             await saveClip(APP.targetDate, APP.mode, cleanBlob);
             
-            // 2. Prepare Watermarked Download
+            // 2. Prepare Watermarked Download (Robust Fallback System)
             DOM.statusText.textContent = "Processing Download...";
+            
             try {
-                const watermarkedBlob = await processWatermarkedDownload(cleanBlob, APP.targetDate, APP.mode);
+                // Wrap total operation in a master timeout (30 seconds max)
+                const watermarkedBlob = await withTimeout(
+                    processWatermarkedDownload(cleanBlob, APP.targetDate, APP.mode),
+                    30000, 
+                    "Total processing time exceeded"
+                );
+                
                 const safeName = getSafeUsername();
                 downloadFile(watermarkedBlob, `${safeName}_${APP.mode}_${formatDateDisplay(APP.targetDate)}.webm`);
+                DOM.statusText.textContent = "Saved.";
+                
             } catch(e) {
-                console.error("Watermark generation failed", e);
+                console.error("Watermark processing failed:", e);
+                
+                // FALLBACK: Download the original clean video
+                // This prevents data loss when processing hangs/fails
+                DOM.statusText.textContent = "Processing Failed. Saved Original.";
+                vibrate(HAPTIC.warning);
+                
+                const safeName = getSafeUsername();
+                // Append '_raw' to distinguish
+                downloadFile(cleanBlob, `${safeName}_${APP.mode}_${formatDateDisplay(APP.targetDate)}_raw.webm`);
+                
+                // Show a non-blocking toast/alert (simulated via existing UI or alert)
+                setTimeout(() => {
+                    alert(`Processing failed (${e.message}). Downloading original video instead.`);
+                }, 500);
             }
 
             await renderCalendar();
