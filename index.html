@@ -1324,7 +1324,7 @@
             ctx.restore();
         }
 
-        // --- FIXED: POST-PROCESS WATERMARK DOWNLOADER (NO BLACK FRAME) ---
+        // --- FIXED: POST-PROCESS WATERMARK DOWNLOADER (NO FREEZE) ---
         async function processWatermarkedDownload(cleanBlob, dateString, mode) {
             try {
                 // Create video element
@@ -1443,20 +1443,36 @@
                     if (e.data.size > 0) chunks.push(e.data); 
                 };
                 
-                // Step 10: Define render loop (but don't start yet)
+                // Step 10: Define render loop with freeze prevention
                 let renderLoopActive = false;
+                let renderFrameId = null;
+                const videoDuration = video.duration;
+                const stopThreshold = videoDuration - 0.05; // Stop 50ms before end to prevent freeze frames
                 
                 const requestFrame = (cb) => {
                     if (video.requestVideoFrameCallback) {
-                        video.requestVideoFrameCallback(cb);
+                        renderFrameId = video.requestVideoFrameCallback(cb);
                     } else {
-                        requestAnimationFrame(cb);
+                        renderFrameId = requestAnimationFrame(cb);
+                    }
+                };
+                
+                const cancelFrame = () => {
+                    if (renderFrameId !== null) {
+                        if (video.cancelVideoFrameCallback) {
+                            video.cancelVideoFrameCallback(renderFrameId);
+                        } else {
+                            cancelAnimationFrame(renderFrameId);
+                        }
+                        renderFrameId = null;
                     }
                 };
                 
                 function renderLoop() {
-                    if (video.paused || video.ended) {
+                    // CRITICAL FIX: Stop rendering BEFORE video ends to prevent frozen frames
+                    if (!renderLoopActive || video.paused || video.ended || video.currentTime >= stopThreshold) {
                         renderLoopActive = false;
+                        cancelFrame();
                         return;
                     }
                     
@@ -1495,15 +1511,22 @@
                 // Step 15: NOW start the recorder (canvas already has valid frames)
                 recorder.start();
                 
-                // Step 16: Wait for video to complete
+                // Step 16: Wait for video to complete with proper cleanup
                 await new Promise((resolve, reject) => {
                     video.onended = () => {
                         renderLoopActive = false;
-                        recorder.stop();
-                        resolve();
+                        cancelFrame(); // Cancel any pending frames
+                        
+                        // Small delay to ensure last valid frame is captured
+                        setTimeout(() => {
+                            recorder.stop();
+                            resolve();
+                        }, 50);
                     };
                     video.onerror = (e) => {
                         console.error("Video playback error", e);
+                        renderLoopActive = false;
+                        cancelFrame();
                         reject(e);
                     };
                 });
