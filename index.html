@@ -101,10 +101,11 @@
             border-radius: 0.75rem; /* Softer */
             font-size: 0.7rem;
             color: var(--text-muted);
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s ease;
             cursor: pointer;
             border: 1px solid transparent;
             position: relative;
+            z-index: 1;
         }
 
         .day-cell:hover {
@@ -122,6 +123,11 @@
             border-color: #3b82f6; /* Blue border for target */
             background: rgba(59, 130, 246, 0.1);
             color: #60a5fa;
+        }
+        
+        /* When animating, hide the original cell to avoid duplication visual */
+        .day-cell.animating-source {
+            opacity: 0;
         }
 
         .safe-pb {
@@ -193,6 +199,41 @@
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
+        }
+
+        /* UPDATED: iOS-Style Morphing Transitions 
+           The modal container handles the backdrop fade.
+           The inner div handles the transform/geometry morph.
+        */
+        #clipModal {
+            transition: backdrop-filter 0.4s ease, background-color 0.4s ease;
+            will-change: backdrop-filter, background-color;
+        }
+        
+        #clipModal.modal-hidden {
+            backdrop-filter: blur(0px);
+            background-color: transparent;
+            pointer-events: none;
+        }
+
+        #clipModal > div {
+            /* We use a custom cubic-bezier that mimics iOS app open physics:
+               Starts fast, then has a long, smooth deceleration.
+            */
+            transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), 
+                        opacity 0.4s ease, 
+                        border-radius 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+            transform-origin: top left; /* Crucial for the coordinate mapping */
+            will-change: transform, opacity, border-radius;
+        }
+
+        /* Fallback for simple fade if no source element */
+        .simple-fade-enter {
+            animation: simpleFadeIn 0.3s ease-out forwards;
+        }
+        @keyframes simpleFadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
         }
     </style>
 </head>
@@ -331,8 +372,8 @@
     </footer>
 
     <!-- Clip Viewer / Delete Modal -->
-    <div id="clipModal" class="fixed inset-0 bg-slate-950/95 backdrop-blur-sm z-40 hidden flex-col items-center justify-center p-4 sm:p-6 transition-opacity">
-        <div class="relative w-full max-w-md md:max-w-lg max-h-[90vh] overflow-y-auto bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border border-slate-800 flex flex-col">
+    <div id="clipModal" class="fixed inset-0 bg-slate-950/95 z-40 hidden flex-col items-center justify-center p-4 sm:p-6 modal-hidden">
+        <div class="relative w-full max-w-md md:max-w-lg max-h-[90vh] overflow-y-auto bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border border-slate-800 flex flex-col transform-gpu">
             <div class="absolute top-4 left-0 w-full flex flex-col items-center gap-2 z-10 pointer-events-none">
                 <span id="modalDateDisplay" class="bg-black/60 backdrop-blur-md text-white/90 px-5 py-1.5 rounded-full text-xs font-bold tracking-wide shadow-lg border border-white/5 uppercase"></span>
                 <span id="modalTimeDisplay" class="hidden bg-black/60 backdrop-blur-md text-slate-300 px-3 py-1 rounded-full text-[10px] font-medium tracking-wide shadow-lg border border-white/5"></span>
@@ -512,6 +553,9 @@
             // Assets
             logoImg: null
         };
+        
+        // --- ANIMATION STATE ---
+        let activeTriggerEl = null;
 
         // --- NEW: TIMEOUT HELPER ---
         const withTimeout = (promise, ms, errorMsg) => Promise.race([
@@ -836,7 +880,8 @@
                 APP.viewDate = new Date(targetYear, targetMonth, 1);
                 updateMonthLabel();
                 await renderCalendar();
-                openClipModal(isoDate); 
+                // Pass null trigger for search (fallback to fade)
+                openClipModal(isoDate, null); 
             } else {
                 triggerSearchError("No recording found.");
             }
@@ -884,7 +929,7 @@
                     el.classList.add('filled');
                     el.onclick = () => {
                         vibrate(HAPTIC.tap);
-                        openClipModal(clip);
+                        openClipModal(clip, el); // Pass element for animation
                     };
                 } else {
                     el.onclick = () => {
@@ -976,7 +1021,9 @@
             }
         }
 
-        async function openClipModal(clipOrDate) {
+        // --- ANIMATED MODAL LOGIC (iOS FLIP Style) ---
+        
+        async function openClipModal(clipOrDate, triggerEl = null) {
             let clip;
             let date;
 
@@ -993,13 +1040,14 @@
                 return;
             }
             
+            activeTriggerEl = triggerEl;
+
             try {
-                // We show the CLEAN video in the player
+                // Setup Video
                 const file = new File([clip.blob], "preview.webm", { type: clip.blob.type });
                 DOM.modalVideo.src = URL.createObjectURL(file);
                 DOM.modalDateDisplay.textContent = formatDateDisplay(date);
                 
-                // NEW: Time Display
                 if (clip.timestamp) {
                     DOM.modalTimeDisplay.textContent = formatTimeDisplay(clip.timestamp);
                     DOM.modalTimeDisplay.classList.remove('hidden');
@@ -1007,15 +1055,66 @@
                     DOM.modalTimeDisplay.classList.add('hidden');
                 }
 
-                DOM.clipModal.classList.remove('hidden');
+                // Prepare for Animation
+                DOM.clipModal.classList.remove('hidden', 'modal-hidden');
                 DOM.clipModal.classList.add('flex');
+                
+                const modalContent = DOM.clipModal.firstElementChild;
 
-                // NEW: Download triggers the watermark process
+                if (triggerEl) {
+                    // FLIP Animation Logic
+                    const triggerRect = triggerEl.getBoundingClientRect();
+                    const modalRect = modalContent.getBoundingClientRect();
+
+                    // Calculate scales
+                    const scaleX = triggerRect.width / modalRect.width;
+                    const scaleY = triggerRect.height / modalRect.height;
+                    
+                    // Calculate translation (from trigger center to modal center)
+                    // But standard approach is top-left to top-left mapping:
+                    const translateX = triggerRect.left - modalRect.left;
+                    const translateY = triggerRect.top - modalRect.top;
+
+                    // Apply Initial State (Instant)
+                    modalContent.style.transition = 'none';
+                    modalContent.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scaleX}, ${scaleY})`;
+                    modalContent.style.opacity = '0.5'; // Start slightly visible to morph
+                    modalContent.style.borderRadius = '0.75rem'; // Match trigger radius
+                    
+                    triggerEl.classList.add('animating-source');
+
+                    // Force Reflow
+                    modalContent.offsetHeight; 
+
+                    // Play Animation to Final State
+                    // CSS transition class handles easing
+                    requestAnimationFrame(() => {
+                        modalContent.style.transition = ''; // Revert to CSS defined transition
+                        modalContent.style.transform = 'translate(0, 0) scale(1, 1)';
+                        modalContent.style.opacity = '1';
+                        modalContent.style.borderRadius = '1rem'; // Final radius
+                    });
+
+                } else {
+                    // Fallback for non-grid opens (search, review after recording)
+                    modalContent.style.transition = 'none';
+                    modalContent.style.transform = 'scale(0.95)';
+                    modalContent.style.opacity = '0';
+                    modalContent.offsetHeight;
+                    
+                    requestAnimationFrame(() => {
+                        modalContent.style.transition = '';
+                        modalContent.style.transform = 'scale(1)';
+                        modalContent.style.opacity = '1';
+                    });
+                }
+                
+                // --- Attach Action Handlers ---
+                
                 DOM.btnDownloadClip.onclick = async () => {
                     if (DOM.btnDownloadClip.disabled) return;
                     vibrate(HAPTIC.tap);
                     
-                    // Show Loader
                     DOM.btnDownloadClip.disabled = true;
                     DOM.dlIconContainer.classList.add('hidden');
                     DOM.dlSpinner.classList.remove('hidden');
@@ -1030,7 +1129,6 @@
                         console.error("Watermark download failed", err);
                         alert("Failed to process download. Please try again.");
                     } finally {
-                        // Reset Button
                         DOM.btnDownloadClip.disabled = false;
                         DOM.dlIconContainer.classList.remove('hidden');
                         DOM.dlSpinner.classList.add('hidden');
@@ -1047,49 +1145,96 @@
                 if (DOM.btnDeleteClip.dataset.state === 'confirm') {
                     vibrate(HAPTIC.destructive);
                     await deleteClip(date, APP.mode);
-                    DOM.clipModal.classList.add('hidden');
+                    
+                    // Simple close for delete, no morph back needed as item is gone
+                    DOM.clipModal.classList.add('hidden', 'modal-hidden'); 
                     DOM.clipModal.classList.remove('flex');
+                    if(activeTriggerEl) activeTriggerEl.classList.remove('animating-source');
+                    
                     await renderCalendar();
                     setTargetDate(APP.today);
-                    DOM.btnDeleteClip.dataset.state = '';
-                    DOM.btnDeleteClip.innerHTML = '<i data-lucide="trash-2" class="w-4 h-4 group-hover:scale-110 transition-transform"></i>';
-                    lucide.createIcons();
+                    resetDeleteBtn();
                 } else {
                     vibrate(HAPTIC.warning);
                     DOM.btnDeleteClip.dataset.state = 'confirm';
                     DOM.btnDeleteClip.innerHTML = '<div class="w-4 h-4 flex items-center justify-center"><span class="text-red-400 font-extrabold text-sm">?</span></div>';
                     setTimeout(() => {
-                        if (DOM.btnDeleteClip.dataset.state === 'confirm') {
-                            DOM.btnDeleteClip.dataset.state = '';
-                            DOM.btnDeleteClip.innerHTML = '<i data-lucide="trash-2" class="w-4 h-4 group-hover:scale-110 transition-transform"></i>';
-                            lucide.createIcons();
-                        }
+                        if (DOM.btnDeleteClip.dataset.state === 'confirm') resetDeleteBtn();
                     }, 3000);
                 }
             };
 
             DOM.btnReplaceClip.onclick = () => {
                 vibrate(HAPTIC.tap); 
-                DOM.clipModal.classList.add('hidden');
-                DOM.clipModal.classList.remove('flex');
-                DOM.modalVideo.pause();
-                APP.targetDate = date;
-                DOM.targetDateDisplay.textContent = formatDateDisplay(APP.targetDate);
-                DOM.targetIndicator.classList.remove('hidden');
-                DOM.statusText.textContent = `Ready for ${formatDateDisplay(APP.targetDate)}`;
-                showReadyState();
+                closeModal(); // Morph back
+                setTimeout(() => {
+                    APP.targetDate = date;
+                    DOM.targetDateDisplay.textContent = formatDateDisplay(APP.targetDate);
+                    DOM.targetIndicator.classList.remove('hidden');
+                    DOM.statusText.textContent = `Ready for ${formatDateDisplay(APP.targetDate)}`;
+                    showReadyState();
+                }, 400); 
             };
         }
         
-        DOM.btnCloseClip.addEventListener('click', () => {
+        function resetDeleteBtn() {
             DOM.btnDeleteClip.dataset.state = '';
             DOM.btnDeleteClip.innerHTML = '<i data-lucide="trash-2" class="w-4 h-4 group-hover:scale-110 transition-transform"></i>';
             lucide.createIcons();
+        }
+        
+        function closeModal() {
             vibrate(HAPTIC.tap);
-            DOM.clipModal.classList.add('hidden');
-            DOM.clipModal.classList.remove('flex');
             DOM.modalVideo.pause();
-        });
+            
+            // Reverse FLIP Animation
+            if (activeTriggerEl) {
+                const modalContent = DOM.clipModal.firstElementChild;
+                const modalRect = modalContent.getBoundingClientRect();
+                const triggerRect = activeTriggerEl.getBoundingClientRect(); // Re-measure in case of scroll
+                
+                const scaleX = triggerRect.width / modalRect.width;
+                const scaleY = triggerRect.height / modalRect.height;
+                const translateX = triggerRect.left - modalRect.left;
+                const translateY = triggerRect.top - modalRect.top;
+
+                // Animate back to trigger position
+                modalContent.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scaleX}, ${scaleY})`;
+                modalContent.style.opacity = '0'; // Fade out content as it shrinks
+                modalContent.style.borderRadius = '0.75rem';
+                
+                // Fade out backdrop
+                DOM.clipModal.classList.add('modal-hidden');
+
+                // Wait for transition end
+                const cleanup = () => {
+                    DOM.clipModal.classList.remove('flex');
+                    DOM.clipModal.classList.add('hidden');
+                    modalContent.style.transform = '';
+                    modalContent.style.opacity = '';
+                    modalContent.style.borderRadius = '';
+                    
+                    activeTriggerEl.classList.remove('animating-source');
+                    activeTriggerEl = null;
+                    
+                    resetDeleteBtn();
+                };
+                
+                // Fallback timeout matching CSS transition time
+                setTimeout(cleanup, 500);
+
+            } else {
+                // Simple fade out fallback
+                DOM.clipModal.classList.add('modal-hidden');
+                setTimeout(() => {
+                    DOM.clipModal.classList.add('hidden');
+                    DOM.clipModal.classList.remove('flex');
+                    resetDeleteBtn();
+                }, 400);
+            }
+        }
+
+        DOM.btnCloseClip.addEventListener('click', closeModal);
 
         // --- CAMERA & FLASH LOGIC ---
         
