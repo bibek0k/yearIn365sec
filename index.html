@@ -1592,7 +1592,8 @@
                 let renderLoopActive = false;
                 let renderFrameId = null;
                 const videoDuration = video.duration;
-                const stopThreshold = videoDuration - 0.05; // Stop 50ms before end to prevent freeze frames
+                // FIX: Removed the threshold that caused early freeze
+                // const stopThreshold = videoDuration - 0.05; 
                 
                 const requestFrame = (cb) => {
                     if (video.requestVideoFrameCallback) {
@@ -1614,8 +1615,8 @@
                 };
                 
                 function renderLoop() {
-                    // CRITICAL FIX: Stop rendering BEFORE video ends to prevent frozen frames
-                    if (!renderLoopActive || video.paused || video.ended || video.currentTime >= stopThreshold) {
+                    // FIX: Stop ONLY when explicitly ended or paused, no artificial threshold
+                    if (!renderLoopActive || video.paused || video.ended) {
                         renderLoopActive = false;
                         cancelFrame();
                         return;
@@ -1633,28 +1634,19 @@
                     video.onseeked = resolve;
                     setTimeout(resolve, 100); // Fallback
                 });
-                
-                // Step 12: Start playback and wait for 'playing' event
-                const playingPromise = new Promise((resolve, reject) => {
-                    video.onplaying = () => {
-                        renderLoopActive = true;
-                        resolve();
-                    };
-                    video.onerror = reject;
-                    setTimeout(() => reject(new Error('Video play timeout')), 5000);
-                });
-                
-                await video.play();
-                await playingPromise;
-                
-                // Step 13: Start render loop immediately
-                renderLoop();
-                
-                // Step 14: Buffer delay to ensure render loop has populated canvas stream
-                await new Promise(resolve => setTimeout(resolve, 150));
-                
-                // Step 15: NOW start the recorder (canvas already has valid frames)
+
+                // FIX: Start Recorder FIRST to capture the very first frame (Step 6 result)
+                // This prevents cutting the first 150ms of the video
                 recorder.start();
+                
+                // Step 12: Start playback
+                // Use a try-catch for play() as it can be flaky if not user-initiated
+                try {
+                    await video.play();
+                } catch (e) { console.error("Play error", e); }
+                
+                renderLoopActive = true;
+                renderLoop();
                 
                 // Step 16: Wait for video to complete with proper cleanup
                 await new Promise((resolve, reject) => {
@@ -1796,18 +1788,32 @@
             };
 
             const recordDuration = APP.mode === 'scene' ? 3000 : 1000;
-            APP.mediaRecorder.start(); 
-
-            const circumference = 45 * 2 * Math.PI;
-            DOM.progressCircle.style.strokeDashoffset = circumference;
-            requestAnimationFrame(() => {
-                DOM.progressCircle.style.transition = `stroke-dashoffset ${recordDuration/1000}s linear`;
-                DOM.progressCircle.style.strokeDashoffset = '0';
-            });
+            
+            // FIX: Add delay for Flash Stabilization
+            // If flash is enabled, wait 400ms for camera AE/AWB to settle before recording
+            const startDelay = APP.flashEnabled ? 400 : 0;
 
             setTimeout(() => {
-                if (APP.mediaRecorder.state === 'recording') APP.mediaRecorder.stop();
-            }, recordDuration);
+                APP.mediaRecorder.start(); 
+
+                const circumference = 45 * 2 * Math.PI;
+                DOM.progressCircle.style.strokeDashoffset = circumference;
+                
+                // Reset transition to ensure smooth start after delay
+                DOM.progressCircle.style.transition = 'none';
+                DOM.progressCircle.style.strokeDashoffset = circumference;
+                
+                // Start animation in next frame
+                requestAnimationFrame(() => {
+                    DOM.progressCircle.style.transition = `stroke-dashoffset ${recordDuration/1000}s linear`;
+                    DOM.progressCircle.style.strokeDashoffset = '0';
+                });
+
+                setTimeout(() => {
+                    if (APP.mediaRecorder.state === 'recording') APP.mediaRecorder.stop();
+                }, recordDuration);
+                
+            }, startDelay);
         }
 
         async function handleRecordingComplete(cleanBlob) {
