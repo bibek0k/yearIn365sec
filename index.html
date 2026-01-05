@@ -358,12 +358,17 @@
 
             <!-- Tools -->
             <div class="flex gap-3 justify-center border-t border-slate-700/50 pt-6 flex-wrap">
-                <!-- Music Input for Month View -->
-                <label id="lblMonthMusic" class="cursor-pointer text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white px-4 py-2.5 rounded-lg flex items-center gap-2 transition-all border border-slate-700 hover:border-slate-600 group">
-                    <input type="file" id="monthMusicInput" accept="audio/*" class="hidden">
-                    <i data-lucide="music" class="w-3.5 h-3.5 group-hover:text-rose-400 transition-colors"></i> 
-                    <span id="monthMusicText">Add Music</span>
-                </label>
+                <!-- Music Input for Month View (Wrapper with Remove Logic) -->
+                <div id="monthMusicWrapper" class="flex items-center bg-slate-800 rounded-lg border border-slate-700 transition-all hover:border-slate-600 group/music max-w-[200px]">
+                    <label id="lblMonthMusic" class="cursor-pointer flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-slate-400 hover:text-white transition-colors flex-1 min-w-0">
+                        <input type="file" id="monthMusicInput" accept="audio/*" class="hidden">
+                        <i id="monthMusicIcon" data-lucide="music" class="w-3.5 h-3.5 flex-shrink-0 group-hover/music:text-rose-400 transition-colors"></i> 
+                        <span id="monthMusicText" class="truncate">Add Music</span>
+                    </label>
+                    <button id="btnRemoveMonthMusic" class="hidden px-2.5 py-2.5 text-slate-500 hover:text-rose-400 hover:bg-slate-700/50 transition-colors border-l border-slate-700/50" title="Remove Music">
+                        <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
 
                 <button id="btnCompile" class="text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all border border-slate-700 hover:border-slate-600">
                     <i data-lucide="film" class="w-3.5 h-3.5"></i> Compile Month
@@ -654,6 +659,9 @@
             monthMusicInput: document.getElementById('monthMusicInput'),
             monthMusicText: document.getElementById('monthMusicText'),
             lblMonthMusic: document.getElementById('lblMonthMusic'),
+            monthMusicWrapper: document.getElementById('monthMusicWrapper'),
+            monthMusicIcon: document.getElementById('monthMusicIcon'),
+            btnRemoveMonthMusic: document.getElementById('btnRemoveMonthMusic'),
             
             // Import Compiler
             btnImportCompile: document.getElementById('btnImportCompile'),
@@ -1975,10 +1983,45 @@
             const file = e.target.files[0];
             if (file) {
                 DOM.monthMusicText.textContent = file.name;
-                DOM.lblMonthMusic.classList.add('border-rose-500', 'text-white', 'bg-slate-700');
-                DOM.lblMonthMusic.classList.remove('text-slate-400');
+                
+                // Active Styling
+                DOM.monthMusicWrapper.classList.add('border-rose-500/50', 'bg-slate-700/30');
+                DOM.monthMusicWrapper.classList.remove('border-slate-700', 'bg-slate-800');
+                
+                DOM.monthMusicIcon.classList.add('text-rose-400');
+                DOM.monthMusicText.classList.add('text-white');
+                DOM.monthMusicText.classList.remove('text-slate-400');
+                
+                // Show Remove Button
+                DOM.btnRemoveMonthMusic.classList.remove('hidden');
+                
                 vibrate(HAPTIC.success);
             }
+        });
+
+        // Remove Music Handler
+        DOM.btnRemoveMonthMusic.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            // Clear Input
+            DOM.monthMusicInput.value = '';
+
+            // Reset UI Text
+            DOM.monthMusicText.textContent = "Add Music";
+
+            // Reset Styling
+            DOM.monthMusicWrapper.classList.remove('border-rose-500/50', 'bg-slate-700/30');
+            DOM.monthMusicWrapper.classList.add('border-slate-700', 'bg-slate-800');
+            
+            DOM.monthMusicIcon.classList.remove('text-rose-400');
+            DOM.monthMusicText.classList.remove('text-white');
+            DOM.monthMusicText.classList.add('text-slate-400');
+
+            // Hide Remove Button
+            DOM.btnRemoveMonthMusic.classList.add('hidden');
+            
+            vibrate(HAPTIC.tap);
         });
 
         DOM.btnCompile.addEventListener('click', async () => {
