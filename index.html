@@ -50,7 +50,7 @@
             width: 100%;
             padding-top: 133.33%; /* 3:4 Aspect Ratio (480x640) */
             background: #000;
-            border-radius: 1.5rem; /* Softer corners */
+            border-radius: 2rem; /* Softer corners */
             overflow: hidden;
             box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.6);
             transition: box-shadow 0.1s ease-in-out;
@@ -98,10 +98,11 @@
             align-items: center;
             justify-content: center;
             background: var(--surface);
-            border-radius: 0.75rem; /* Softer */
+            border-radius: 1.25rem; /* Softer */
             font-size: 0.7rem;
             color: var(--text-muted);
-            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s ease;
+            /* UPDATED: Added opacity transition for smooth re-entry */
+            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s ease, opacity 0.3s ease;
             cursor: pointer;
             border: 1px solid transparent;
             position: relative;
@@ -127,7 +128,8 @@
         
         /* When animating, hide the original cell to avoid duplication visual */
         .day-cell.animating-source {
-            opacity: 0;
+            opacity: 0 !important;
+            visibility: hidden;
         }
 
         .safe-pb {
@@ -206,7 +208,7 @@
            The inner div handles the transform/geometry morph.
         */
         #clipModal {
-            transition: backdrop-filter 0.4s ease, background-color 0.4s ease;
+            transition: backdrop-filter 0.5s ease, background-color 0.5s ease;
             will-change: backdrop-filter, background-color;
         }
         
@@ -221,7 +223,7 @@
                Starts fast, then has a long, smooth deceleration.
             */
             transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), 
-                        opacity 0.4s ease, 
+                        opacity 0.5s cubic-bezier(0.2, 0.8, 0.2, 1),
                         border-radius 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
             transform-origin: top left; /* Crucial for the coordinate mapping */
             will-change: transform, opacity, border-radius;
@@ -355,7 +357,14 @@
             </div>
 
             <!-- Tools -->
-            <div class="flex gap-3 justify-center border-t border-slate-700/50 pt-6">
+            <div class="flex gap-3 justify-center border-t border-slate-700/50 pt-6 flex-wrap">
+                <!-- Music Input for Month View -->
+                <label id="lblMonthMusic" class="cursor-pointer text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white px-4 py-2.5 rounded-lg flex items-center gap-2 transition-all border border-slate-700 hover:border-slate-600 group">
+                    <input type="file" id="monthMusicInput" accept="audio/*" class="hidden">
+                    <i data-lucide="music" class="w-3.5 h-3.5 group-hover:text-rose-400 transition-colors"></i> 
+                    <span id="monthMusicText">Add Music</span>
+                </label>
+
                 <button id="btnCompile" class="text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all border border-slate-700 hover:border-slate-600">
                     <i data-lucide="film" class="w-3.5 h-3.5"></i> Compile Month
                 </button>
@@ -454,6 +463,21 @@
                     </div>
                     <strong class="text-slate-200 mt-2">Click or Drag Videos Here</strong>
                     <p class="text-xs text-slate-500">Supports: username_self_DD-MM-YYYY.* or scene_DD-MM-YYYY.*</p>
+                </label>
+
+                <!-- Music Input for Import Modal -->
+                <label class="cursor-pointer bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl p-4 flex items-center justify-between transition-all group">
+                     <div class="flex items-center gap-3">
+                        <div class="bg-slate-700 text-slate-400 group-hover:text-rose-400 p-2 rounded-lg transition-colors">
+                            <i data-lucide="music" class="w-5 h-5"></i>
+                        </div>
+                        <div class="flex flex-col text-left">
+                            <span class="text-sm font-semibold text-slate-200">Background Music (Optional)</span>
+                            <span id="importMusicText" class="text-xs text-slate-500">Tap to select audio file</span>
+                        </div>
+                     </div>
+                     <input type="file" id="importMusicInput" accept="audio/*" class="hidden">
+                     <i id="importMusicCheck" data-lucide="plus" class="w-4 h-4 text-slate-500"></i>
                 </label>
 
                 <!-- File Lists Container - Dynamic Per User -->
@@ -627,6 +651,9 @@
             compileCanvas: document.getElementById('compileCanvas'),
             compileBadge: document.getElementById('compileBadge'),
             compileBadgeText: document.getElementById('compileBadgeText'),
+            monthMusicInput: document.getElementById('monthMusicInput'),
+            monthMusicText: document.getElementById('monthMusicText'),
+            lblMonthMusic: document.getElementById('lblMonthMusic'),
             
             // Import Compiler
             btnImportCompile: document.getElementById('btnImportCompile'),
@@ -644,6 +671,9 @@
             importPercentDisplay: document.getElementById('importPercentDisplay'),
             importDownloadLinks: document.getElementById('importDownloadLinks'),
             btnCloseImportModal: document.getElementById('btnCloseImportModal'),
+            importMusicInput: document.getElementById('importMusicInput'),
+            importMusicText: document.getElementById('importMusicText'),
+            importMusicCheck: document.getElementById('importMusicCheck'),
 
             // Icons & Rings
             recordControls: document.getElementById('recordControls'),
@@ -1070,29 +1100,35 @@
                     const scaleX = triggerRect.width / modalRect.width;
                     const scaleY = triggerRect.height / modalRect.height;
                     
-                    // Calculate translation (from trigger center to modal center)
-                    // But standard approach is top-left to top-left mapping:
                     const translateX = triggerRect.left - modalRect.left;
                     const translateY = triggerRect.top - modalRect.top;
 
                     // Apply Initial State (Instant)
                     modalContent.style.transition = 'none';
                     modalContent.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scaleX}, ${scaleY})`;
-                    modalContent.style.opacity = '0.5'; // Start slightly visible to morph
-                    modalContent.style.borderRadius = '0.75rem'; // Match trigger radius
                     
+                    // FIX: START FULLY OPAQUE to act as the expanded element
+                    modalContent.style.opacity = '1'; 
+                    modalContent.style.borderRadius = '1.25rem'; 
+                    modalContent.style.padding = '2rem'; // ADDED: Start with padding for symmetry
+
+                    // UPDATED: Disable transition on trigger momentarily to prevent fade out on open
+                    triggerEl.style.transition = 'none';
                     triggerEl.classList.add('animating-source');
+                    // Force reflow
+                    triggerEl.offsetHeight;
+                    triggerEl.style.transition = '';
 
                     // Force Reflow
                     modalContent.offsetHeight; 
 
                     // Play Animation to Final State
-                    // CSS transition class handles easing
                     requestAnimationFrame(() => {
-                        modalContent.style.transition = ''; // Revert to CSS defined transition
+                        modalContent.style.transition = ''; 
                         modalContent.style.transform = 'translate(0, 0) scale(1, 1)';
                         modalContent.style.opacity = '1';
-                        modalContent.style.borderRadius = '1rem'; // Final radius
+                        modalContent.style.borderRadius = '2rem'; 
+                        modalContent.style.padding = '0'; // ADDED: Animate padding to 0
                     });
 
                 } else {
@@ -1183,48 +1219,65 @@
             lucide.createIcons();
         }
         
+        // UPDATED: Closing Sequence with Cross-fade Logic
         function closeModal() {
             vibrate(HAPTIC.tap);
             DOM.modalVideo.pause();
             
-            // Reverse FLIP Animation
             if (activeTriggerEl) {
                 const modalContent = DOM.clipModal.firstElementChild;
                 const modalRect = modalContent.getBoundingClientRect();
-                const triggerRect = activeTriggerEl.getBoundingClientRect(); // Re-measure in case of scroll
-                
+                const triggerRect = activeTriggerEl.getBoundingClientRect();
+
                 const scaleX = triggerRect.width / modalRect.width;
                 const scaleY = triggerRect.height / modalRect.height;
                 const translateX = triggerRect.left - modalRect.left;
                 const translateY = triggerRect.top - modalRect.top;
 
-                // Animate back to trigger position
+                // PHASE 1: Morph Only (Keep Opacity 1)
+                // Explicitly set transition for transform/radius/padding only - override default CSS
+                modalContent.style.transition = 'transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), border-radius 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), padding 0.5s cubic-bezier(0.2, 0.8, 0.2, 1)';
                 modalContent.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scaleX}, ${scaleY})`;
-                modalContent.style.opacity = '0'; // Fade out content as it shrinks
-                modalContent.style.borderRadius = '0.75rem';
-                
-                // Fade out backdrop
+                modalContent.style.borderRadius = '1.25rem';
+                modalContent.style.padding = '2rem'; // ADDED: Padding transition target
+                modalContent.style.opacity = '1';
+
+                // Fade out the black backdrop immediately though
                 DOM.clipModal.classList.add('modal-hidden');
 
-                // Wait for transition end
-                const cleanup = () => {
-                    DOM.clipModal.classList.remove('flex');
-                    DOM.clipModal.classList.add('hidden');
-                    modalContent.style.transform = '';
-                    modalContent.style.opacity = '';
-                    modalContent.style.borderRadius = '';
-                    
+                // PHASE 2: Cross-fade (Triggered after morph completes)
+                setTimeout(() => {
+                    // 1. Reveal Badge (Fade In)
+                    // Ensure the badge has a smooth opacity transition (added in CSS)
                     activeTriggerEl.classList.remove('animating-source');
-                    activeTriggerEl = null;
-                    
-                    resetDeleteBtn();
-                };
-                
-                // Fallback timeout matching CSS transition time
-                setTimeout(cleanup, 500);
+
+                    // 2. Hide Modal (Fade Out)
+                    modalContent.style.transition = 'opacity 0.2s ease';
+                    modalContent.style.opacity = '0';
+
+                    // PHASE 3: Cleanup (After Fade)
+                    setTimeout(() => {
+                        // Check if cancelled by quick reopen
+                        if(!DOM.clipModal.classList.contains('modal-hidden')) return;
+
+                        DOM.clipModal.classList.remove('flex');
+                        DOM.clipModal.classList.add('hidden');
+                        
+                        // Reset styles
+                        modalContent.style.transform = '';
+                        modalContent.style.opacity = '';
+                        modalContent.style.borderRadius = '';
+                        modalContent.style.transition = '';
+                        modalContent.style.padding = '';
+                        
+                        activeTriggerEl = null;
+                        resetDeleteBtn();
+                    }, 200); // Wait for opacity fade out
+
+                }, 500); // Wait for morph transform
 
             } else {
-                // Simple fade out fallback
+                // Fallback for non-grid closes
                 DOM.clipModal.classList.add('modal-hidden');
                 setTimeout(() => {
                     DOM.clipModal.classList.add('hidden');
@@ -1917,6 +1970,17 @@
 
         // --- COMPILATION CORE (CONTEXT AWARE) ---
         
+        // Month View Music Input Handler
+        DOM.monthMusicInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                DOM.monthMusicText.textContent = file.name;
+                DOM.lblMonthMusic.classList.add('border-rose-500', 'text-white', 'bg-slate-700');
+                DOM.lblMonthMusic.classList.remove('text-slate-400');
+                vibrate(HAPTIC.success);
+            }
+        });
+
         DOM.btnCompile.addEventListener('click', async () => {
             vibrate(HAPTIC.tap);
             const clips = await getAllClips(APP.mode);
@@ -1933,6 +1997,9 @@
                 return; 
             }
             
+            // Get Music File if selected
+            const musicFile = DOM.monthMusicInput.files[0] || null;
+
             // Reset UI
             DOM.compileModal.classList.remove('hidden');
             DOM.compileModal.classList.add('flex');
@@ -1951,7 +2018,7 @@
                     progress: DOM.compileProgress,
                     log: DOM.compileLog,
                     percentEl: DOM.compilePercent
-                }, true);
+                }, true, musicFile); // Pass music file
                 
                 // Success State
                 DOM.btnCloseModal.classList.remove('hidden');
@@ -1975,6 +2042,7 @@
             vibrate(HAPTIC.tap);
             DOM.compileModal.classList.add('hidden'); 
             DOM.compileModal.classList.remove('flex');
+            // Reset input for next time? Optional.
         });
 
         DOM.btnCancelCompile.addEventListener('click', () => {
@@ -1985,7 +2053,8 @@
         });
 
         // REFACTORED: accepts UI context to fix hidden canvas bug
-        async function compileClips(items, username, uiContext, addWatermark = false) {
+        // Added musicFile argument
+        async function compileClips(items, username, uiContext, addWatermark = false, musicFile = null) {
             const { canvas, progress, log, percentEl } = uiContext;
             
             const startDate = formatDateDisplay(items[0].date);
@@ -2002,13 +2071,47 @@
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const audioDest = audioCtx.createMediaStreamDestination();
             
+            // --- MUSIC HANDLING ---
+            let musicAudio = null;
+            if (musicFile) {
+                log.textContent = "Loading background music...";
+                musicAudio = new Audio(URL.createObjectURL(musicFile));
+                musicAudio.loop = true;
+                musicAudio.crossOrigin = "anonymous";
+                
+                // Wait for music to be playable
+                await new Promise((resolve, reject) => {
+                    musicAudio.oncanplaythrough = resolve;
+                    musicAudio.onerror = () => {
+                         console.warn("Music load failed, continuing without music");
+                         musicAudio = null;
+                         resolve();
+                    };
+                    // Safety timeout
+                    setTimeout(resolve, 3000);
+                });
+
+                if (musicAudio) {
+                    const musicSource = audioCtx.createMediaElementSource(musicAudio);
+                    musicSource.connect(audioDest);
+                }
+            }
+
             const video = document.createElement('video');
             video.crossOrigin = "anonymous";
-            video.muted = false;
+            video.muted = false; // We control routing manually
             video.playsInline = true;
             
-            const sourceNode = audioCtx.createMediaElementSource(video);
-            sourceNode.connect(audioDest);
+            // --- VIDEO AUDIO HANDLING ---
+            // Only connect video audio if NO music is provided
+            if (!musicAudio) {
+                const sourceNode = audioCtx.createMediaElementSource(video);
+                sourceNode.connect(audioDest);
+            } else {
+                // If music is present, we simply DO NOT connect the video source to the destination.
+                // This effectively mutes the video in the recording.
+                video.muted = true; // Extra safety
+            }
 
             const firstFileUrl = URL.createObjectURL(items[0].blob || items[0].file);
             video.src = firstFileUrl;
@@ -2043,7 +2146,15 @@
                 if (e.data.size > 0) chunks.push(e.data);
             };
 
+            // Start Recording
             recorder.start();
+            
+            // Start Music
+            if (musicAudio) {
+                // Determine start behavior - resume context first
+                if (audioCtx.state === 'suspended') await audioCtx.resume();
+                musicAudio.play().catch(e => console.warn("Music auto-play failed", e));
+            }
 
             for (let i = 0; i < items.length; i++) {
                 const item = items[i];
@@ -2064,6 +2175,12 @@
                 await playAndRecord(video, ctx, w, h, dateVal, addWatermark);
                 
                 progress.style.width = `${progressPct}%`;
+            }
+
+            // Stop Music
+            if (musicAudio) {
+                musicAudio.pause();
+                musicAudio.currentTime = 0;
             }
 
             recorder.stop();
@@ -2137,6 +2254,19 @@
             DOM.importCompileModal.classList.add('flex');
         });
 
+        // Import Music Input Handler
+        DOM.importMusicInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                DOM.importMusicText.textContent = file.name;
+                DOM.importMusicText.classList.add('text-rose-400');
+                DOM.importMusicCheck.setAttribute('data-lucide', 'check');
+                DOM.importMusicCheck.classList.add('text-emerald-500');
+                vibrate(HAPTIC.success);
+                lucide.createIcons();
+            }
+        });
+
         DOM.btnCloseImportModal.addEventListener('click', () => {
             vibrate(HAPTIC.tap);
             DOM.importCompileModal.classList.add('hidden');
@@ -2150,6 +2280,14 @@
             DOM.importDownloadLinks.classList.add('hidden');
             DOM.importDownloadLinks.innerHTML = '';
             DOM.importModalTitle.textContent = "Import Memories";
+            
+            // Reset Music Input
+            DOM.importMusicInput.value = '';
+            DOM.importMusicText.textContent = "Tap to select audio file";
+            DOM.importMusicText.classList.remove('text-rose-400');
+            DOM.importMusicCheck.setAttribute('data-lucide', 'plus');
+            DOM.importMusicCheck.classList.remove('text-emerald-500');
+            lucide.createIcons();
         });
 
         // Drag & Drop
@@ -2292,6 +2430,9 @@
             APP.importState.isProcessing = true;
             DOM.btnStartImportCompile.disabled = true;
             vibrate(HAPTIC.action);
+            
+            // Get Music File
+            const musicFile = DOM.importMusicInput.files[0] || null;
 
             // TRANSITION TO PROCESSING VIEW
             DOM.importContentArea.classList.add('hidden'); // Hide list
@@ -2320,11 +2461,11 @@
                     groups.scene.sort((a, b) => a.date - b.date);
 
                     if (groups.self.length > 0) {
-                        const res = await compileClips(groups.self, username, importUIContext);
+                        const res = await compileClips(groups.self, username, importUIContext, false, musicFile);
                         addDownloadLink(res.blob, res.name);
                     }
                     if (groups.scene.length > 0) {
-                        const res = await compileClips(groups.scene, username, importUIContext);
+                        const res = await compileClips(groups.scene, username, importUIContext, false, musicFile);
                         addDownloadLink(res.blob, res.name);
                     }
                 }
