@@ -556,9 +556,12 @@
                     <div id="trimPlayhead" class="absolute top-0 bottom-0 w-px bg-white/50 z-0 hidden"></div>
 
                     <!-- The Draggable Window -->
-                    <div id="trimWindow" class="absolute top-0 h-full border-2 border-rose-500 bg-rose-500/20 z-10 rounded-md cursor-grab active:cursor-grabbing flex items-center justify-center">
+                    <div id="trimWindow" class="absolute top-0 h-full border-2 border-rose-500 bg-rose-500/20 z-10 rounded-md cursor-grab active:cursor-grabbing flex items-center justify-center overflow-hidden">
+                        <!-- NEW: Progress Bar inside window -->
+                        <div id="trimProgressBar" class="absolute top-0 left-0 h-full bg-white/30 pointer-events-none w-0 transition-[width] duration-75 ease-linear"></div>
+                        
                         <!-- Handle Visuals -->
-                        <div class="w-1 h-6 bg-rose-500/50 rounded-full mx-auto"></div>
+                        <div class="relative w-1 h-6 bg-rose-500/50 rounded-full mx-auto pointer-events-none z-20"></div>
                     </div>
                 </div>
 
@@ -654,8 +657,9 @@
                 windowWidth: 0,
                 videoDuration: 0,
                 songDuration: 0,
-                isPlaying: false, // New: Track playback state
-                previewTimeout: null
+                isPlaying: false, 
+                previewTimeout: null,
+                progressFrameId: null // New: For progress animation
             },
 
             // User Data
@@ -752,6 +756,7 @@
             trimAudioPreview: document.getElementById('trimAudioPreview'),
             trimTrackContainer: document.getElementById('trimTrackContainer'),
             trimWindow: document.getElementById('trimWindow'),
+            trimProgressBar: document.getElementById('trimProgressBar'), // New Ref
             trimStartDisplay: document.getElementById('trimStartDisplay'),
             trimEndDisplay: document.getElementById('trimEndDisplay'),
             trimTotalTime: document.getElementById('trimTotalTime'),
@@ -2272,8 +2277,9 @@
             DOM.trimAudioPreview.play().then(() => {
                 APP.trimState.isPlaying = true;
                 updatePreviewIcon();
+                startProgressLoop(); // Start visual progress
                 
-                // Duration Logic: Play FULL selected segment (video duration), no 3s cap
+                // Duration Logic: Play FULL selected segment (video duration)
                 const duration = APP.trimState.videoDuration * 1000;
                 
                 if (APP.trimState.previewTimeout) clearTimeout(APP.trimState.previewTimeout);
@@ -2289,16 +2295,45 @@
             DOM.trimAudioPreview.pause();
             APP.trimState.isPlaying = false;
             updatePreviewIcon();
+            stopProgressLoop(); // Stop visual progress
             if (APP.trimState.previewTimeout) clearTimeout(APP.trimState.previewTimeout);
         }
 
+        // Fixed: Re-inject HTML to ensure Lucide renders correctly every time
         function updatePreviewIcon() {
-            if (APP.trimState.isPlaying) {
-                DOM.iconPreviewTrim.setAttribute('data-lucide', 'pause');
-            } else {
-                DOM.iconPreviewTrim.setAttribute('data-lucide', 'play');
-            }
+            const iconName = APP.trimState.isPlaying ? 'pause' : 'play';
+            DOM.btnPreviewTrimSegment.innerHTML = `<i data-lucide="${iconName}" class="w-4 h-4"></i>`;
             lucide.createIcons();
+        }
+
+        // New: Progress Bar Animation Loop
+        function startProgressLoop() {
+            const draw = () => {
+                if (!APP.trimState.isPlaying) return;
+                
+                const current = DOM.trimAudioPreview.currentTime;
+                const start = APP.musicConfig.start;
+                const duration = APP.trimState.videoDuration;
+
+                // Calculate progress relative to the selected segment
+                let pct = ((current - start) / duration) * 100;
+                
+                // Clamp
+                if (pct < 0) pct = 0;
+                if (pct > 100) pct = 100;
+
+                DOM.trimProgressBar.style.width = `${pct}%`;
+                
+                APP.trimState.progressFrameId = requestAnimationFrame(draw);
+            };
+            
+            if (APP.trimState.progressFrameId) cancelAnimationFrame(APP.trimState.progressFrameId);
+            APP.trimState.progressFrameId = requestAnimationFrame(draw);
+        }
+
+        function stopProgressLoop() {
+            if (APP.trimState.progressFrameId) cancelAnimationFrame(APP.trimState.progressFrameId);
+            DOM.trimProgressBar.style.width = '0%';
         }
 
         // Preview Button
