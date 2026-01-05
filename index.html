@@ -359,13 +359,20 @@
             <!-- Tools -->
             <div class="flex gap-3 justify-center border-t border-slate-700/50 pt-6 flex-wrap">
                 <!-- Music Input for Month View (Wrapper with Remove Logic) -->
-                <div id="monthMusicWrapper" class="flex items-center bg-slate-800 rounded-lg border border-slate-700 transition-all hover:border-slate-600 group/music max-w-[200px]">
-                    <label id="lblMonthMusic" class="cursor-pointer flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-slate-400 hover:text-white transition-colors flex-1 min-w-0">
+                <div id="monthMusicWrapper" class="flex items-center bg-slate-800 rounded-lg border border-slate-700 transition-all hover:border-slate-600 group/music max-w-[280px]">
+                    <label id="lblMonthMusic" class="cursor-pointer flex items-center gap-2 px-3 py-2.5 text-xs font-semibold text-slate-400 hover:text-white transition-colors flex-1 min-w-0" title="Replace Music">
                         <input type="file" id="monthMusicInput" accept="audio/*" class="hidden">
                         <i id="monthMusicIcon" data-lucide="music" class="w-3.5 h-3.5 flex-shrink-0 group-hover/music:text-rose-400 transition-colors"></i> 
                         <span id="monthMusicText" class="truncate">Add Music</span>
                     </label>
-                    <button id="btnRemoveMonthMusic" class="hidden px-2.5 py-2.5 text-slate-500 hover:text-rose-400 hover:bg-slate-700/50 transition-colors border-l border-slate-700/50" title="Remove Music">
+                    <!-- Divider -->
+                    <div id="musicDivider" class="hidden w-px h-4 bg-slate-700"></div>
+                    <!-- Trim Button -->
+                    <button id="btnTrimMusic" class="hidden px-2.5 py-2.5 text-slate-500 hover:text-blue-400 hover:bg-slate-700/50 transition-colors" title="Trim Music">
+                        <i data-lucide="scissors" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <!-- Remove Button -->
+                    <button id="btnRemoveMonthMusic" class="hidden px-2.5 py-2.5 text-slate-500 hover:text-rose-400 hover:bg-slate-700/50 transition-colors border-l border-slate-700/50 rounded-r-lg" title="Remove Music">
                         <i data-lucide="x" class="w-3.5 h-3.5"></i>
                     </button>
                 </div>
@@ -491,38 +498,92 @@
                 </div>
             </div>
 
-            <!-- Progress & Preview Area (Hidden initially) -->
-            <div id="importProgressArea" class="hidden flex flex-col gap-6 items-center w-full animate-fade-in">
-                 <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-slate-800 shadow-2xl shadow-rose-900/10">
-                    <canvas id="importPreviewCanvas" class="w-full h-full object-contain"></canvas>
-                    
-                    <!-- Processing Badge Overlay -->
-                    <div class="absolute top-4 left-4 bg-rose-600/90 backdrop-blur text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg uppercase tracking-wide flex items-center gap-2">
-                        <div class="w-2 h-2 bg-white rounded-full animate-pulse"></div>
-                        Processing
-                    </div>
-                </div>
-                
-                <div class="w-full flex flex-col gap-2">
-                    <div class="flex justify-between items-end">
-                         <p id="importStatusLog" class="text-xs text-slate-300 font-semibold tracking-wide">Initializing...</p>
-                         <p id="importPercentDisplay" class="text-xs text-slate-500 font-mono">0%</p>
-                    </div>
-                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                        <div id="importProgressBar" class="bg-gradient-to-r from-rose-500 to-rose-400 h-full w-0 transition-all duration-300 rounded-full"></div>
-                    </div>
-                </div>
+            <!-- Processing Area (Hidden by default) -->
+            <div id="importProgressArea" class="hidden w-full flex flex-col gap-6">
+                 <!-- Preview Canvas -->
+                 <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden shadow-lg border border-slate-800 mx-auto max-w-md">
+                     <canvas id="importPreviewCanvas" class="w-full h-full object-contain"></canvas>
+                     <div class="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex flex-col justify-end p-4">
+                        <span id="importStatusLog" class="text-xs font-mono text-emerald-400 truncate">Initializing...</span>
+                     </div>
+                 </div>
+
+                 <!-- Progress Bar -->
+                 <div class="w-full flex flex-col gap-2">
+                     <div class="flex justify-between text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                         <span>Total Progress</span>
+                         <span id="importPercentDisplay">0%</span>
+                     </div>
+                     <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                         <div id="importProgressBar" class="bg-rose-500 h-full w-0 transition-all duration-300 rounded-full"></div>
+                     </div>
+                 </div>
             </div>
 
-            <!-- Actions -->
-            <div class="flex flex-col gap-3 mt-2">
-                <button id="btnStartImportCompile" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-rose-900/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none" disabled>
-                    Compile Files
+            <!-- Download Links (Hidden by default) -->
+            <div id="importDownloadLinks" class="hidden w-full flex flex-col gap-3 max-h-[30vh] overflow-y-auto scrollbar-thin">
+                <!-- Dynamic Links -->
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex gap-4 pt-4 border-t border-slate-800 w-full mt-auto">
+                <button id="btnCloseImportModal" class="px-6 py-3 text-slate-400 hover:text-white font-semibold transition-colors">Close</button>
+                <button id="btnStartImportCompile" disabled class="flex-1 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-rose-900/20 flex items-center justify-center gap-2">
+                    <i data-lucide="film" class="w-4 h-4"></i>
+                    Start Compilation
                 </button>
-                <div id="importDownloadLinks" class="flex flex-col gap-2 hidden w-full">
-                    <!-- Download buttons injected here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- NEW: Music Trim Modal -->
+    <div id="trimModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-sm z-50 hidden flex-col items-center justify-center p-4">
+        <div class="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl flex flex-col gap-6">
+            <div class="flex justify-between items-center">
+                <h3 class="text-lg font-bold text-slate-200">Select Music Segment</h3>
+                <span id="trimTotalTime" class="text-xs font-mono text-emerald-400 bg-emerald-900/20 px-2 py-1 rounded border border-emerald-900/50">Video Length: 0s</span>
+            </div>
+            
+            <div class="w-full bg-slate-950 rounded-xl p-4 border border-slate-800 flex flex-col gap-4">
+                <!-- Visual Timeline Container -->
+                <div id="trimTrackContainer" class="relative w-full h-16 bg-slate-800/50 rounded-lg overflow-hidden cursor-pointer touch-none select-none group">
+                    <!-- Fake Waveform Background -->
+                    <div class="absolute inset-0 opacity-30" 
+                         style="background-image: linear-gradient(90deg, #94a3b8 2px, transparent 2px); background-size: 5px 100%;">
+                    </div>
+                    
+                    <!-- Progress / Playhead Indicator (Optional visual aid) -->
+                    <div id="trimPlayhead" class="absolute top-0 bottom-0 w-px bg-white/50 z-0 hidden"></div>
+
+                    <!-- The Draggable Window -->
+                    <div id="trimWindow" class="absolute top-0 h-full border-2 border-rose-500 bg-rose-500/20 z-10 rounded-md cursor-grab active:cursor-grabbing flex items-center justify-center">
+                        <!-- Handle Visuals -->
+                        <div class="w-1 h-6 bg-rose-500/50 rounded-full mx-auto"></div>
+                    </div>
                 </div>
-                <button id="btnCloseImportModal" class="w-full text-slate-400 hover:text-white text-sm py-2 transition-colors">Close</button>
+
+                <div class="flex justify-between text-[10px] text-slate-500 font-mono">
+                    <span id="trimStartDisplay">0.0s</span>
+                    <span id="trimEndDisplay">0.0s</span>
+                </div>
+
+                <audio id="trimAudioPreview" class="hidden"></audio>
+            </div>
+
+            <p class="text-[10px] text-slate-500 text-center italic">
+                Drag the highlighted window to choose the part of the song that fits your <span id="trimClipCount">0</span> clips.
+            </p>
+
+            <div class="flex gap-3 pt-4 border-t border-slate-800">
+                <button id="btnCancelTrim" class="flex-1 text-slate-400 hover:text-white text-sm font-semibold transition-colors">Cancel</button>
+                <div class="flex-1 flex gap-2">
+                    <button id="btnPreviewTrimSegment" class="px-4 bg-slate-800 hover:bg-slate-700 text-blue-400 rounded-xl transition-colors border border-slate-700 flex items-center justify-center">
+                        <i data-lucide="play" class="w-4 h-4"></i>
+                    </button>
+                    <button id="btnSaveTrim" class="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 rounded-xl transition-all shadow-lg shadow-rose-900/20">
+                        Done
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -575,6 +636,25 @@
             
             // Recording State (Audio Logic)
             recAudioCtx: null,
+            
+            // Music State
+            musicConfig: {
+                file: null,
+                start: 0,
+                end: null, // null means end of file
+                duration: 0
+            },
+            
+            // Trim State
+            trimState: {
+                isDragging: false,
+                startX: 0,
+                currentLeft: 0,
+                containerWidth: 0,
+                windowWidth: 0,
+                videoDuration: 0,
+                songDuration: 0
+            },
 
             // User Data
             userName: localStorage.getItem('user_name') || null,
@@ -662,6 +742,22 @@
             monthMusicWrapper: document.getElementById('monthMusicWrapper'),
             monthMusicIcon: document.getElementById('monthMusicIcon'),
             btnRemoveMonthMusic: document.getElementById('btnRemoveMonthMusic'),
+            btnTrimMusic: document.getElementById('btnTrimMusic'),
+            musicDivider: document.getElementById('musicDivider'),
+            
+            // Trim Modal
+            trimModal: document.getElementById('trimModal'),
+            trimAudioPreview: document.getElementById('trimAudioPreview'),
+            trimTrackContainer: document.getElementById('trimTrackContainer'),
+            trimWindow: document.getElementById('trimWindow'),
+            trimStartDisplay: document.getElementById('trimStartDisplay'),
+            trimEndDisplay: document.getElementById('trimEndDisplay'),
+            trimTotalTime: document.getElementById('trimTotalTime'),
+            trimClipCount: document.getElementById('trimClipCount'),
+            
+            btnPreviewTrimSegment: document.getElementById('btnPreviewTrimSegment'),
+            btnSaveTrim: document.getElementById('btnSaveTrim'),
+            btnCancelTrim: document.getElementById('btnCancelTrim'),
             
             // Import Compiler
             btnImportCompile: document.getElementById('btnImportCompile'),
@@ -1982,6 +2078,19 @@
         DOM.monthMusicInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (file) {
+                // Update State
+                APP.musicConfig.file = file;
+                APP.musicConfig.start = 0;
+                APP.musicConfig.end = null;
+                
+                // Get Duration for later
+                const tempAudio = new Audio(URL.createObjectURL(file));
+                tempAudio.onloadedmetadata = () => {
+                    APP.musicConfig.duration = tempAudio.duration;
+                    APP.musicConfig.end = tempAudio.duration;
+                };
+
+                // Update UI
                 DOM.monthMusicText.textContent = file.name;
                 
                 // Active Styling
@@ -1992,11 +2101,194 @@
                 DOM.monthMusicText.classList.add('text-white');
                 DOM.monthMusicText.classList.remove('text-slate-400');
                 
-                // Show Remove Button
+                // Show Controls
                 DOM.btnRemoveMonthMusic.classList.remove('hidden');
+                DOM.btnTrimMusic.classList.remove('hidden');
+                DOM.musicDivider.classList.remove('hidden');
                 
                 vibrate(HAPTIC.success);
             }
+        });
+
+        // --- NEW: INSTAGRAM-STYLE TRIM LOGIC ---
+
+        async function calculateMonthDuration() {
+            const clips = await getAllClips(APP.mode);
+            const year = APP.viewDate.getFullYear();
+            const month = String(APP.viewDate.getMonth() + 1).padStart(2, '0');
+            const monthPrefix = `${year}-${month}`;
+            const monthClips = clips.filter(c => c.date.startsWith(monthPrefix));
+            
+            // Self mode = ~1s, Scene mode = ~3s
+            const clipDuration = APP.mode === 'scene' ? 3 : 1;
+            return {
+                duration: monthClips.length * clipDuration,
+                count: monthClips.length
+            };
+        }
+
+        function updateTrimUI(startTime) {
+            // Clamp start time
+            const maxStart = Math.max(0, APP.trimState.songDuration - APP.trimState.videoDuration);
+            if (startTime < 0) startTime = 0;
+            if (startTime > maxStart) startTime = maxStart;
+
+            // Calculate visual position percentage
+            const pct = (startTime / APP.trimState.songDuration) * 100;
+            DOM.trimWindow.style.left = `${pct}%`;
+
+            // Update displays
+            DOM.trimStartDisplay.textContent = `${startTime.toFixed(1)}s`;
+            const end = Math.min(startTime + APP.trimState.videoDuration, APP.trimState.songDuration);
+            DOM.trimEndDisplay.textContent = `${end.toFixed(1)}s`;
+            
+            // Update Config temporarily (so preview works)
+            APP.musicConfig.start = startTime;
+            APP.musicConfig.end = end;
+        }
+
+        // Trim Button Handler (Entry Point)
+        DOM.btnTrimMusic.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!APP.musicConfig.file) return;
+
+            // 1. Get Video Stats
+            const stats = await calculateMonthDuration();
+            APP.trimState.videoDuration = stats.duration || 1; // Prevent 0 division
+            DOM.trimTotalTime.textContent = `Video Length: ${stats.duration}s`;
+            DOM.trimClipCount.textContent = stats.count;
+
+            if (stats.count === 0) {
+                alert("No clips recorded for this month yet!");
+                return;
+            }
+
+            // 2. Setup Audio
+            const fileURL = URL.createObjectURL(APP.musicConfig.file);
+            DOM.trimAudioPreview.src = fileURL;
+            
+            // 3. Initialize UI once metadata loads
+            DOM.trimAudioPreview.onloadedmetadata = () => {
+                APP.trimState.songDuration = DOM.trimAudioPreview.duration;
+                
+                // Logic: How wide should the window be?
+                // window width % = (videoDuration / songDuration) * 100
+                let windowPct = (APP.trimState.videoDuration / APP.trimState.songDuration) * 100;
+                
+                // Cap at 100% if video is longer than song (will loop)
+                if (windowPct > 100) windowPct = 100;
+                
+                DOM.trimWindow.style.width = `${windowPct}%`;
+                
+                // Restore previous start position or default to 0
+                updateTrimUI(APP.musicConfig.start || 0);
+                
+                DOM.trimModal.classList.remove('hidden');
+                DOM.trimModal.classList.add('flex');
+            };
+            
+            DOM.trimAudioPreview.load();
+            vibrate(HAPTIC.tap);
+        });
+
+        // --- DRAG HANDLERS ---
+        
+        const handleDragStart = (clientX) => {
+            APP.trimState.isDragging = true;
+            APP.trimState.startX = clientX;
+            // Get current left % from style, convert to pixels
+            const rect = DOM.trimTrackContainer.getBoundingClientRect();
+            APP.trimState.containerWidth = rect.width;
+            
+            // Calculate current visual left in pixels
+            const currentLeftPct = parseFloat(DOM.trimWindow.style.left || 0);
+            APP.trimState.currentLeft = (currentLeftPct / 100) * rect.width;
+            
+            DOM.trimWindow.classList.add('cursor-grabbing');
+            DOM.trimWindow.classList.remove('cursor-grab');
+        };
+
+        const handleDragMove = (clientX) => {
+            if (!APP.trimState.isDragging) return;
+            
+            const deltaX = clientX - APP.trimState.startX;
+            let newLeftPx = APP.trimState.currentLeft + deltaX;
+            
+            // Convert pixel to time
+            // Time = (LeftPx / ContainerWidth) * SongDuration
+            let newStartTime = (newLeftPx / APP.trimState.containerWidth) * APP.trimState.songDuration;
+            
+            updateTrimUI(newStartTime);
+        };
+
+        const handleDragEnd = () => {
+            if (!APP.trimState.isDragging) return;
+            APP.trimState.isDragging = false;
+            DOM.trimWindow.classList.remove('cursor-grabbing');
+            DOM.trimWindow.classList.add('cursor-grab');
+            
+            // Debounced preview play
+            playPreviewSnippet();
+        };
+
+        // Mouse Events
+        DOM.trimTrackContainer.addEventListener('mousedown', (e) => handleDragStart(e.clientX));
+        window.addEventListener('mousemove', (e) => handleDragMove(e.clientX));
+        window.addEventListener('mouseup', handleDragEnd);
+
+        // Touch Events
+        DOM.trimTrackContainer.addEventListener('touchstart', (e) => {
+            // e.preventDefault(); // allow scroll if needed, but here we want drag
+            handleDragStart(e.touches[0].clientX);
+        }, { passive: false });
+        
+        window.addEventListener('touchmove', (e) => {
+             // e.preventDefault(); 
+             handleDragMove(e.touches[0].clientX);
+        }, { passive: false });
+        
+        window.addEventListener('touchend', handleDragEnd);
+
+
+        function playPreviewSnippet() {
+            DOM.trimAudioPreview.currentTime = APP.musicConfig.start;
+            DOM.trimAudioPreview.play();
+            
+            // Stop after 3 seconds or video duration (whichever is shorter, to save sanity)
+            const previewDur = Math.min(APP.trimState.videoDuration, 3); 
+            
+            // Clear any existing timeout
+            if (APP.trimPreviewTimeout) clearTimeout(APP.trimPreviewTimeout);
+            
+            APP.trimPreviewTimeout = setTimeout(() => {
+                DOM.trimAudioPreview.pause();
+            }, previewDur * 1000);
+        }
+
+        // Preview Button
+        DOM.btnPreviewTrimSegment.addEventListener('click', () => {
+             playPreviewSnippet();
+        });
+
+        // Save Trim
+        DOM.btnSaveTrim.addEventListener('click', () => {
+             DOM.trimModal.classList.add('hidden');
+             DOM.trimModal.classList.remove('flex');
+             DOM.trimAudioPreview.pause();
+             
+             // Visual feedback on main UI
+             DOM.btnTrimMusic.classList.add('text-blue-400', 'bg-slate-700/50');
+             DOM.btnTrimMusic.classList.remove('text-slate-500');
+             
+             vibrate(HAPTIC.success);
+        });
+
+        DOM.btnCancelTrim.addEventListener('click', () => {
+             DOM.trimModal.classList.add('hidden');
+             DOM.trimModal.classList.remove('flex');
+             DOM.trimAudioPreview.pause();
+             if (APP.trimPreviewTimeout) clearTimeout(APP.trimPreviewTimeout);
         });
 
         // Remove Music Handler
@@ -2004,8 +2296,11 @@
             e.preventDefault();
             e.stopPropagation();
 
-            // Clear Input
+            // Clear Input & State
             DOM.monthMusicInput.value = '';
+            APP.musicConfig.file = null;
+            APP.musicConfig.start = 0;
+            APP.musicConfig.end = null;
 
             // Reset UI Text
             DOM.monthMusicText.textContent = "Add Music";
@@ -2017,9 +2312,15 @@
             DOM.monthMusicIcon.classList.remove('text-rose-400');
             DOM.monthMusicText.classList.remove('text-white');
             DOM.monthMusicText.classList.add('text-slate-400');
+            
+            // Reset Trim Button Style
+            DOM.btnTrimMusic.classList.remove('text-blue-400', 'bg-slate-700/50');
+            DOM.btnTrimMusic.classList.add('text-slate-500');
 
-            // Hide Remove Button
+            // Hide Controls
             DOM.btnRemoveMonthMusic.classList.add('hidden');
+            DOM.btnTrimMusic.classList.add('hidden');
+            DOM.musicDivider.classList.add('hidden');
             
             vibrate(HAPTIC.tap);
         });
@@ -2040,8 +2341,8 @@
                 return; 
             }
             
-            // Get Music File if selected
-            const musicFile = DOM.monthMusicInput.files[0] || null;
+            // Get Music Configuration
+            const musicConfig = APP.musicConfig.file ? { ...APP.musicConfig } : null;
 
             // Reset UI
             DOM.compileModal.classList.remove('hidden');
@@ -2061,7 +2362,7 @@
                     progress: DOM.compileProgress,
                     log: DOM.compileLog,
                     percentEl: DOM.compilePercent
-                }, true, musicFile); // Pass music file
+                }, true, musicConfig); // Pass music config
                 
                 // Success State
                 DOM.btnCloseModal.classList.remove('hidden');
@@ -2085,19 +2386,17 @@
             vibrate(HAPTIC.tap);
             DOM.compileModal.classList.add('hidden'); 
             DOM.compileModal.classList.remove('flex');
-            // Reset input for next time? Optional.
         });
 
         DOM.btnCancelCompile.addEventListener('click', () => {
             vibrate(HAPTIC.tap);
-            // Hide modal immediately. The background process will finish or fail silently.
             DOM.compileModal.classList.add('hidden'); 
             DOM.compileModal.classList.remove('flex');
         });
 
         // REFACTORED: accepts UI context to fix hidden canvas bug
-        // Added musicFile argument
-        async function compileClips(items, username, uiContext, addWatermark = false, musicFile = null) {
+        // Updated music handling to support AudioBuffer for trimming
+        async function compileClips(items, username, uiContext, addWatermark = false, musicConfig = null) {
             const { canvas, progress, log, percentEl } = uiContext;
             
             const startDate = formatDateDisplay(items[0].date);
@@ -2114,30 +2413,42 @@
             const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             const audioDest = audioCtx.createMediaStreamDestination();
             
-            // --- MUSIC HANDLING ---
-            let musicAudio = null;
-            if (musicFile) {
-                log.textContent = "Loading background music...";
-                musicAudio = new Audio(URL.createObjectURL(musicFile));
-                musicAudio.loop = true;
-                musicAudio.crossOrigin = "anonymous";
-                
-                // Wait for music to be playable
-                await new Promise((resolve, reject) => {
-                    musicAudio.oncanplaythrough = resolve;
-                    musicAudio.onerror = () => {
-                         console.warn("Music load failed, continuing without music");
-                         musicAudio = null;
-                         resolve();
-                    };
-                    // Safety timeout
-                    setTimeout(resolve, 3000);
-                });
-
-                if (musicAudio) {
-                    const musicSource = audioCtx.createMediaElementSource(musicAudio);
-                    musicSource.connect(audioDest);
+            // --- MUSIC HANDLING (Advanced Buffer Source) ---
+            let musicSource = null;
+            let musicBuffer = null;
+            
+            if (musicConfig && musicConfig.file) {
+                log.textContent = "Decoding background music...";
+                try {
+                    const arrayBuffer = await musicConfig.file.arrayBuffer();
+                    musicBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                    
+                    if (musicBuffer) {
+                        musicSource = audioCtx.createBufferSource();
+                        musicSource.buffer = musicBuffer;
+                        
+                        // Apply Trimming & Looping
+                        musicSource.loop = true;
+                        musicSource.loopStart = musicConfig.start || 0;
+                        musicSource.loopEnd = musicConfig.end || musicBuffer.duration;
+                        
+                        musicSource.connect(audioDest);
+                    }
+                } catch (e) {
+                    console.warn("Music processing failed", e);
+                    log.textContent = "Music failed, skipping...";
                 }
+            } else if (musicConfig instanceof File) {
+                // Fallback for Import Modal (simple file, no trim)
+                 log.textContent = "Processing music...";
+                 try {
+                    const arrayBuffer = await musicConfig.arrayBuffer();
+                    musicBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+                    musicSource = audioCtx.createBufferSource();
+                    musicSource.buffer = musicBuffer;
+                    musicSource.loop = true;
+                    musicSource.connect(audioDest);
+                 } catch (e) { console.warn("Simple music load failed", e); }
             }
 
             const video = document.createElement('video');
@@ -2146,14 +2457,11 @@
             video.playsInline = true;
             
             // --- VIDEO AUDIO HANDLING ---
-            // Only connect video audio if NO music is provided
-            if (!musicAudio) {
+            if (!musicSource) {
                 const sourceNode = audioCtx.createMediaElementSource(video);
                 sourceNode.connect(audioDest);
             } else {
-                // If music is present, we simply DO NOT connect the video source to the destination.
-                // This effectively mutes the video in the recording.
-                video.muted = true; // Extra safety
+                video.muted = true; // Mute video if music exists
             }
 
             const firstFileUrl = URL.createObjectURL(items[0].blob || items[0].file);
@@ -2193,10 +2501,11 @@
             recorder.start();
             
             // Start Music
-            if (musicAudio) {
-                // Determine start behavior - resume context first
+            if (musicSource) {
                 if (audioCtx.state === 'suspended') await audioCtx.resume();
-                musicAudio.play().catch(e => console.warn("Music auto-play failed", e));
+                // Start playing at offset 'start' immediately (time 0)
+                const startOffset = musicSource.loopStart || 0;
+                musicSource.start(0, startOffset);
             }
 
             for (let i = 0; i < items.length; i++) {
@@ -2221,9 +2530,8 @@
             }
 
             // Stop Music
-            if (musicAudio) {
-                musicAudio.pause();
-                musicAudio.currentTime = 0;
+            if (musicSource) {
+                musicSource.stop();
             }
 
             recorder.stop();
@@ -2476,6 +2784,7 @@
             
             // Get Music File
             const musicFile = DOM.importMusicInput.files[0] || null;
+            // NOTE: Import modal currently doesn't support trimming UI, so pass raw file
 
             // TRANSITION TO PROCESSING VIEW
             DOM.importContentArea.classList.add('hidden'); // Hide list
