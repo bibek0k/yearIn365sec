@@ -368,10 +368,10 @@
                     <!-- Divider -->
                     <div id="musicDivider" class="hidden w-px h-4 bg-slate-700"></div>
                     <!-- Trim Button -->
-                    <button id="btnTrimMusic" class="hidden px-2.5 py-2.5 text-slate-500 hover:text-blue-400 hover:bg-slate-700/50 transition-colors" title="Trim Music">
-                        <i data-lucide="scissors" class="w-3.5 h-3.5"></i>
-                    </button>
-                    <!-- Remove Button -->
+            <button id="btnTrimMusic" class="hidden px-2.5 py-2.5 text-slate-500 hover:text-blue-400 hover:bg-slate-700/50 transition-colors" title="Trim Music">
+                <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5"></i>
+            </button>
+            <!-- Remove Button -->
                     <button id="btnRemoveMonthMusic" class="hidden px-2.5 py-2.5 text-slate-500 hover:text-rose-400 hover:bg-slate-700/50 transition-colors border-l border-slate-700/50 rounded-r-lg" title="Remove Music">
                         <i data-lucide="x" class="w-3.5 h-3.5"></i>
                     </button>
@@ -578,7 +578,7 @@
                 <button id="btnCancelTrim" class="flex-1 text-slate-400 hover:text-white text-sm font-semibold transition-colors">Cancel</button>
                 <div class="flex-1 flex gap-2">
                     <button id="btnPreviewTrimSegment" class="px-4 bg-slate-800 hover:bg-slate-700 text-blue-400 rounded-xl transition-colors border border-slate-700 flex items-center justify-center">
-                        <i data-lucide="play" class="w-4 h-4"></i>
+                        <i id="iconPreviewTrim" data-lucide="play" class="w-4 h-4"></i>
                     </button>
                     <button id="btnSaveTrim" class="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 rounded-xl transition-all shadow-lg shadow-rose-900/20">
                         Done
@@ -653,7 +653,9 @@
                 containerWidth: 0,
                 windowWidth: 0,
                 videoDuration: 0,
-                songDuration: 0
+                songDuration: 0,
+                isPlaying: false, // New: Track playback state
+                previewTimeout: null
             },
 
             // User Data
@@ -756,6 +758,7 @@
             trimClipCount: document.getElementById('trimClipCount'),
             
             btnPreviewTrimSegment: document.getElementById('btnPreviewTrimSegment'),
+            iconPreviewTrim: document.getElementById('iconPreviewTrim'), // New Ref
             btnSaveTrim: document.getElementById('btnSaveTrim'),
             btnCancelTrim: document.getElementById('btnCancelTrim'),
             
@@ -2207,6 +2210,9 @@
             
             DOM.trimWindow.classList.add('cursor-grabbing');
             DOM.trimWindow.classList.remove('cursor-grab');
+            
+            // Pause if dragging
+            if (APP.trimState.isPlaying) pausePreview();
         };
 
         const handleDragMove = (clientX) => {
@@ -2227,9 +2233,6 @@
             APP.trimState.isDragging = false;
             DOM.trimWindow.classList.remove('cursor-grabbing');
             DOM.trimWindow.classList.add('cursor-grab');
-            
-            // Debounced preview play
-            playPreviewSnippet();
         };
 
         // Mouse Events
@@ -2251,31 +2254,63 @@
         window.addEventListener('touchend', handleDragEnd);
 
 
-        function playPreviewSnippet() {
+        // --- PREVIEW LOGIC (FIXED) ---
+
+        function togglePreview() {
+            if (APP.trimState.isPlaying) {
+                pausePreview();
+            } else {
+                playPreview();
+            }
+        }
+
+        function playPreview() {
+            // Set Start Time
             DOM.trimAudioPreview.currentTime = APP.musicConfig.start;
-            DOM.trimAudioPreview.play();
             
-            // Stop after 3 seconds or video duration (whichever is shorter, to save sanity)
-            const previewDur = Math.min(APP.trimState.videoDuration, 3); 
-            
-            // Clear any existing timeout
-            if (APP.trimPreviewTimeout) clearTimeout(APP.trimPreviewTimeout);
-            
-            APP.trimPreviewTimeout = setTimeout(() => {
-                DOM.trimAudioPreview.pause();
-            }, previewDur * 1000);
+            // Play
+            DOM.trimAudioPreview.play().then(() => {
+                APP.trimState.isPlaying = true;
+                updatePreviewIcon();
+                
+                // Duration Logic: Play FULL selected segment (video duration), no 3s cap
+                const duration = APP.trimState.videoDuration * 1000;
+                
+                if (APP.trimState.previewTimeout) clearTimeout(APP.trimState.previewTimeout);
+                
+                APP.trimState.previewTimeout = setTimeout(() => {
+                    pausePreview();
+                }, duration);
+
+            }).catch(e => console.error("Preview play failed", e));
+        }
+
+        function pausePreview() {
+            DOM.trimAudioPreview.pause();
+            APP.trimState.isPlaying = false;
+            updatePreviewIcon();
+            if (APP.trimState.previewTimeout) clearTimeout(APP.trimState.previewTimeout);
+        }
+
+        function updatePreviewIcon() {
+            if (APP.trimState.isPlaying) {
+                DOM.iconPreviewTrim.setAttribute('data-lucide', 'pause');
+            } else {
+                DOM.iconPreviewTrim.setAttribute('data-lucide', 'play');
+            }
+            lucide.createIcons();
         }
 
         // Preview Button
         DOM.btnPreviewTrimSegment.addEventListener('click', () => {
-             playPreviewSnippet();
+             togglePreview();
         });
 
         // Save Trim
         DOM.btnSaveTrim.addEventListener('click', () => {
              DOM.trimModal.classList.add('hidden');
              DOM.trimModal.classList.remove('flex');
-             DOM.trimAudioPreview.pause();
+             pausePreview(); // Stop audio
              
              // Visual feedback on main UI
              DOM.btnTrimMusic.classList.add('text-blue-400', 'bg-slate-700/50');
@@ -2287,8 +2322,7 @@
         DOM.btnCancelTrim.addEventListener('click', () => {
              DOM.trimModal.classList.add('hidden');
              DOM.trimModal.classList.remove('flex');
-             DOM.trimAudioPreview.pause();
-             if (APP.trimPreviewTimeout) clearTimeout(APP.trimPreviewTimeout);
+             pausePreview();
         });
 
         // Remove Music Handler
@@ -2382,17 +2416,7 @@
             }
         });
 
-        DOM.btnCloseModal.addEventListener('click', () => {
-            vibrate(HAPTIC.tap);
-            DOM.compileModal.classList.add('hidden'); 
-            DOM.compileModal.classList.remove('flex');
-        });
-
-        DOM.btnCancelCompile.addEventListener('click', () => {
-            vibrate(HAPTIC.tap);
-            DOM.compileModal.classList.add('hidden'); 
-            DOM.compileModal.classList.remove('flex');
-        });
+        // ... (Close Modal Handlers remain same)
 
         // REFACTORED: accepts UI context to fix hidden canvas bug
         // Updated music handling to support AudioBuffer for trimming
@@ -2427,10 +2451,25 @@
                         musicSource = audioCtx.createBufferSource();
                         musicSource.buffer = musicBuffer;
                         
-                        // Apply Trimming & Looping
-                        musicSource.loop = true;
-                        musicSource.loopStart = musicConfig.start || 0;
-                        musicSource.loopEnd = musicConfig.end || musicBuffer.duration;
+                        // FIX: Calculate total compiled video duration approx
+                        // Self = 1s, Scene = 3s
+                        const clipDur = APP.mode === 'scene' ? 3 : 1;
+                        const totalVideoDur = items.length * clipDur;
+
+                        // FIX: Only Loop if video is strictly longer than song
+                        if (totalVideoDur > musicBuffer.duration) {
+                            musicSource.loop = true;
+                            // Play from start of song (or selected start?)
+                            // If looping entire song:
+                            musicSource.loopStart = 0;
+                            musicSource.loopEnd = musicBuffer.duration;
+                            musicSource.start(0, 0); 
+                        } else {
+                            // Perfect Fit / No Loop needed
+                            musicSource.loop = false;
+                            // Play specifically the segment selected
+                            musicSource.start(0, musicConfig.start || 0); 
+                        }
                         
                         musicSource.connect(audioDest);
                     }
@@ -2439,15 +2478,15 @@
                     log.textContent = "Music failed, skipping...";
                 }
             } else if (musicConfig instanceof File) {
-                // Fallback for Import Modal (simple file, no trim)
-                 log.textContent = "Processing music...";
+                // Fallback for Import Modal
                  try {
                     const arrayBuffer = await musicConfig.arrayBuffer();
                     musicBuffer = await audioCtx.decodeAudioData(arrayBuffer);
                     musicSource = audioCtx.createBufferSource();
                     musicSource.buffer = musicBuffer;
-                    musicSource.loop = true;
+                    musicSource.loop = true; // Default loop for import mode
                     musicSource.connect(audioDest);
+                    musicSource.start(0);
                  } catch (e) { console.warn("Simple music load failed", e); }
             }
 
@@ -2500,13 +2539,8 @@
             // Start Recording
             recorder.start();
             
-            // Start Music
-            if (musicSource) {
-                if (audioCtx.state === 'suspended') await audioCtx.resume();
-                // Start playing at offset 'start' immediately (time 0)
-                const startOffset = musicSource.loopStart || 0;
-                musicSource.start(0, startOffset);
-            }
+            // Resume Audio Context if needed
+            if (audioCtx.state === 'suspended') await audioCtx.resume();
 
             for (let i = 0; i < items.length; i++) {
                 const item = items[i];
@@ -2516,10 +2550,17 @@
                 log.textContent = `Processing ${username}: Clip ${i + 1}/${items.length}`;
                 
                 if(percentEl) percentEl.textContent = `${progressPct}%`;
-                // Fallback to import modal element if needed
                 if(DOM.importPercentDisplay && !percentEl) DOM.importPercentDisplay.textContent = `${progressPct}%`;
                 
+                // Clean up previous source
                 if (i > 0) {
+                    video.pause();
+                    video.removeAttribute('src'); // Detach
+                    video.load(); // Reset
+                    
+                    // FIX: Small buffer delay to allow browser to clear memory/state
+                    await new Promise(r => setTimeout(r, 50));
+
                     video.src = URL.createObjectURL(item.blob || item.file);
                     await new Promise(r => video.onloadedmetadata = r);
                 }
@@ -2544,11 +2585,21 @@
             
             audioCtx.close();
             
+            // Cleanup Video
+            video.removeAttribute('src');
+            video.load();
+            
             return { blob, name: `${outputName}.webm` };
         }
 
         function playAndRecord(video, ctx, targetW, targetH, dateString, addWatermark) {
             return new Promise((resolve, reject) => {
+                // FIX: Add safety timeout to prevent infinite freeze
+                const safetyTimeout = setTimeout(() => {
+                    console.warn("Video play timeout forced resolve");
+                    resolve();
+                }, (video.duration * 1000) + 2000); // Duration + 2s buffer
+
                 video.currentTime = 0;
                 
                 const draw = () => {
@@ -2575,11 +2626,13 @@
                 };
 
                 video.onended = () => {
+                    clearTimeout(safetyTimeout);
                     resolve();
                 };
                 
                 video.onerror = (e) => {
                     console.error("Video Error", e);
+                    clearTimeout(safetyTimeout);
                     resolve(); 
                 };
 
@@ -2587,6 +2640,7 @@
                     draw();
                 }).catch(e => {
                     console.error("Play error", e);
+                    clearTimeout(safetyTimeout);
                     resolve();
                 });
             });
