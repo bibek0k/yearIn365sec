@@ -380,6 +380,10 @@
                 <button id="btnCompile" class="text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all border border-slate-700 hover:border-slate-600">
                     <i data-lucide="film" class="w-3.5 h-3.5"></i> Compile Month
                 </button>
+                <!-- NEW: Year Compilation Button -->
+                <button id="btnCompileYear" class="hidden text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-amber-500 hover:text-amber-400 px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all border border-slate-700 hover:border-slate-600">
+                    <i data-lucide="clapperboard" class="w-3.5 h-3.5"></i> Compile Year
+                </button>
                 <button id="btnImportCompile" class="text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 px-5 py-2.5 rounded-lg flex items-center gap-2 transition-all border border-slate-700 hover:border-slate-600">
                     <i data-lucide="upload" class="w-3.5 h-3.5"></i> Import & Compile
                 </button>
@@ -733,6 +737,7 @@
             
             // Compile
             btnCompile: document.getElementById('btnCompile'),
+            btnCompileYear: document.getElementById('btnCompileYear'), // New Ref
             compileModal: document.getElementById('compileModal'),
             compileProgress: document.getElementById('compileProgress'),
             compileLog: document.getElementById('compileLog'),
@@ -1052,6 +1057,14 @@
             const year = APP.viewDate.getFullYear();
             const month = APP.viewDate.getMonth();
             const daysInMonth = new Date(year, month + 1, 0).getDate();
+            
+            // NEW: Toggle Year Compile Button
+            // Show only if viewing December (Month 11)
+            if (month === 11) {
+                DOM.btnCompileYear.classList.remove('hidden');
+            } else {
+                DOM.btnCompileYear.classList.add('hidden');
+            }
             
             for (let d = 1; d <= daysInMonth; d++) {
                 const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -2455,6 +2468,63 @@
                 DOM.btnCloseModal.classList.remove('hidden');
                 DOM.compileLog.textContent = "Compilation Complete!";
                 DOM.compileBadgeText.textContent = "Finished";
+                
+                // Apply Calm Finished Styles
+                DOM.compileBadge.classList.remove('text-slate-400', 'border-slate-700/50');
+                DOM.compileBadge.classList.add('text-emerald-500', 'border-emerald-500/30');
+                
+                vibrate(HAPTIC.success);
+            }
+            catch (err) { 
+                DOM.compileLog.innerHTML = `<span class="text-red-400">Error: ${err.message}</span>`; 
+                DOM.btnCloseModal.classList.remove('hidden'); 
+                DOM.btnCloseModal.textContent = "Close";
+            }
+        });
+
+        // NEW: Year Compilation Handler
+        DOM.btnCompileYear.addEventListener('click', async () => {
+            vibrate(HAPTIC.tap);
+            const clips = await getAllClips(APP.mode);
+            const year = APP.viewDate.getFullYear();
+            
+            // Filter for the entire year
+            const yearClips = clips.filter(c => c.date.startsWith(`${year}-`));
+            yearClips.sort((a, b) => a.date.localeCompare(b.date));
+
+            if (yearClips.length < 2) { 
+                DOM.statusText.textContent = "Needs 2+ clips to compile year";
+                vibrate(HAPTIC.warning);
+                return; 
+            }
+            
+            // Get Music Configuration (reuses the Month view input)
+            const musicConfig = APP.musicConfig.file ? { ...APP.musicConfig } : null;
+
+            // Reset UI
+            DOM.compileModal.classList.remove('hidden');
+            DOM.compileModal.classList.add('flex');
+            DOM.btnCloseModal.classList.add('hidden');
+            DOM.compileBadge.classList.remove('hidden');
+            DOM.compileBadgeText.textContent = "Compiling Year"; // Custom Text
+            
+            // Apply Calm Start Styles
+            DOM.compileBadge.classList.remove('text-emerald-500', 'border-emerald-500/30');
+            DOM.compileBadge.classList.add('text-slate-400', 'border-slate-700/50');
+            
+            try { 
+                // Compile using same pipeline
+                await compileClips(yearClips, getSafeUsername(), {
+                    canvas: DOM.compileCanvas,
+                    progress: DOM.compileProgress,
+                    log: DOM.compileLog,
+                    percentEl: DOM.compilePercent
+                }, true, musicConfig); 
+                
+                // Success State
+                DOM.btnCloseModal.classList.remove('hidden');
+                DOM.compileLog.textContent = "Year Compilation Complete!";
+                DOM.compileBadgeText.textContent = "Year Ready";
                 
                 // Apply Calm Finished Styles
                 DOM.compileBadge.classList.remove('text-slate-400', 'border-slate-700/50');
