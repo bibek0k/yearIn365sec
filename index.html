@@ -1214,6 +1214,13 @@
                     
                     const translateX = triggerRect.left - modalRect.left;
                     const translateY = triggerRect.top - modalRect.top;
+                    
+                    // DYNAMIC BORDER RADIUS CALCULATION
+                    // We need to counteract the scale. If we want visual radius X at scale Y, 
+                    // the actual CSS radius needs to be X / Y.
+                    const computedStyle = window.getComputedStyle(triggerEl);
+                    const targetRadius = parseFloat(computedStyle.borderRadius); 
+                    const compensatedRadius = targetRadius / scaleX; // Counter-scale the radius
 
                     // Apply Initial State (Instant)
                     modalContent.style.transition = 'none';
@@ -1221,8 +1228,8 @@
                     
                     // FIX: START FULLY OPAQUE to act as the expanded element
                     modalContent.style.opacity = '1'; 
-                    modalContent.style.borderRadius = '1.25rem'; 
-                    modalContent.style.padding = '0'; // FIXED: Removed padding
+                    modalContent.style.borderRadius = `${compensatedRadius}px`; // UPDATED: Dynamic calculation
+                    modalContent.style.padding = '0'; 
 
                     // UPDATED: Disable transition on trigger momentarily to prevent fade out on open
                     triggerEl.style.transition = 'none';
@@ -1239,8 +1246,8 @@
                         modalContent.style.transition = ''; 
                         modalContent.style.transform = 'translate(0, 0) scale(1, 1)';
                         modalContent.style.opacity = '1';
-                        modalContent.style.borderRadius = '2rem'; 
-                        modalContent.style.padding = '0'; // FIXED: Ensure no padding
+                        modalContent.style.borderRadius = '1.5rem'; // Standard modal radius (rounded-3xl approx)
+                        modalContent.style.padding = '0';
                     });
 
                 } else {
@@ -1345,13 +1352,18 @@
                 const scaleY = triggerRect.height / modalRect.height;
                 const translateX = triggerRect.left - modalRect.left;
                 const translateY = triggerRect.top - modalRect.top;
+                
+                // DYNAMIC BORDER RADIUS CALCULATION
+                const computedStyle = window.getComputedStyle(activeTriggerEl);
+                const targetRadius = parseFloat(computedStyle.borderRadius);
+                const compensatedRadius = targetRadius / scaleX;
 
                 // PHASE 1: Morph Only (Keep Opacity 1)
                 // Explicitly set transition for transform/radius only - override default CSS
                 modalContent.style.transition = 'transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), border-radius 0.5s cubic-bezier(0.2, 0.8, 0.2, 1)';
                 modalContent.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scaleX}, ${scaleY})`;
-                modalContent.style.borderRadius = '1.25rem';
-                modalContent.style.padding = '0'; // FIXED: Removed padding
+                modalContent.style.borderRadius = `${compensatedRadius}px`; // UPDATED: Dynamic calculation
+                modalContent.style.padding = '0'; 
                 modalContent.style.opacity = '1';
 
                 // Fade out the black backdrop immediately though
