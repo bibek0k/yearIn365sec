@@ -900,7 +900,10 @@
                 const randomAdj = adjectives[Math.floor(Math.random() * adjectives.length)];
                 nameGreeting = `Hi, ${randomAdj} Barnita,`;
             } else if (name === "Bibek/BB") {
-                nameGreeting = "Hi Bibek boss,";
+                // Use rotating expressive symbols for Bibek (random per load/reload)
+                const emoticons = ["(^_^)", "(^^)", "=_=", "O_o", ">.<", "ʘ‿ʘ", "◉‿◉"];
+                const randomEmo = emoticons[Math.floor(Math.random() * emoticons.length)];
+                nameGreeting = `Hi, Bibek ${randomEmo},`;
             } else {
                 const cleanName = name ? name.replace(/\/BB$/, '') : '';
                 nameGreeting = cleanName ? `Hi ${cleanName},` : "Hi,";
