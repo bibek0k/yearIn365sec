@@ -898,12 +898,13 @@
             if (name === "Barnita/BB") {
                 const adjectives = ["gorgeous", "majestic", "lovely", "radiant", "elegant", "stunning"];
                 const randomAdj = adjectives[Math.floor(Math.random() * adjectives.length)];
-                nameGreeting = `Hi, ${randomAdj} Barnita,`;
+                const emoticons = ["O_O", "o_o", "0_0", "._.", "-_-", ">_<", "(°_°)" , "(UwU)", "c:", ":>", ":D", "xD", "^^", ".-.", ">.<", "°_°", "<3", "♡", "♥", "ε>", "^_^", "^.^", "^o^", "^◡^", "^w^", "^u^", ">◡<", "•ᴗ•", "'◡'"];
+                const randomEmo = emoticons[Math.floor(Math.random() * emoticons.length)];
+                nameGreeting = `Hi, ${randomAdj} Barnita ${randomEmo}`;
             } else if (name === "Bibek/BB") {
-                // Use rotating expressive symbols for Bibek (random per load/reload)
                 const emoticons = ["O_O", "o_o", "0_0", "._.", "-_-", ">_<", "X_X", "@_@", "(°_°)", "(⊙_⊙)", "(UwU)", "(OwO)", "c:", ":>", ":D", "xD", "^^", ".-.", ">.<", "°_°", "<3", "♡", "♥", "ε>", "^_^", "^.^", "^o^", "^◡^", "^w^", "^u^", ">◡<", "•ᴗ•", "'◡'"];
                 const randomEmo = emoticons[Math.floor(Math.random() * emoticons.length)];
-                nameGreeting = `Hi, Bibek ${randomEmo},`;
+                nameGreeting = `Hi, Bibek ${randomEmo}`;
             } else {
                 const cleanName = name ? name.replace(/\/BB$/, '') : '';
                 nameGreeting = cleanName ? `Hi ${cleanName},` : "Hi,";
