@@ -1,0 +1,228 @@
+
+:root {
+    --primary: #e11d48; /* Rose-600 */
+    --bg: #0f172a; /* Slate-900 */
+    --surface: #1e293b; /* Slate-800 */
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+}
+body {
+    background-color: var(--bg);
+    color: var(--text-main);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
+}
+/* Subtle Fade In Animation */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+    animation: fadeIn 0.6s ease-out forwards;
+}
+.progress-ring__circle {
+    transition: stroke-dashoffset 0.1s linear;
+    transform: rotate(-90deg);
+    transform-origin: 50% 50%;
+}
+.camera-container {
+    position: relative;
+    width: 100%;
+    padding-top: 133.33%; /* 3:4 Aspect Ratio (480x640) */
+    background: #000;
+    border-radius: 2rem; /* Softer corners */
+    overflow: hidden;
+    box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.6);
+    transition: box-shadow 0.1s ease-in-out;
+}
+/* Screen Flash: Warm White Shadow covering everything OUTSIDE the camera container */
+.camera-container.flash-active {
+    box-shadow: 0 0 0 200vmax rgba(255, 248, 235, 0.95); /* Warm White */
+    z-index: 100;
+}
+.camera-feed {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(1); 
+}
+/* CSS Mirroring for Preview */
+.camera-feed.mirrored {
+    transform: scaleX(-1);
+}
+
+/* Calendar Grid */
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0.5rem;
+}
+
+/* Responsive Grid for Tablet/Desktop */
+@media (min-width: 768px) {
+    .calendar-grid {
+        gap: 0.75rem;
+    }
+}
+.day-cell {
+    aspect-ratio: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface);
+    border-radius: 1.25rem; /* Softer */
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    /* UPDATED: Added opacity transition for smooth re-entry */
+    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s ease, opacity 0.3s ease;
+    cursor: pointer;
+    border: 1px solid transparent;
+    position: relative;
+    z-index: 1;
+}
+.day-cell:hover {
+    border-color: rgba(255,255,255,0.1);
+    transform: translateY(-2px);
+}
+.day-cell.filled {
+    background: var(--primary);
+    color: white;
+    box-shadow: 0 4px 12px rgba(225, 29, 72, 0.3);
+}
+
+.day-cell.target-active {
+    border-color: #3b82f6; /* Blue border for target */
+    background: rgba(59, 130, 246, 0.1);
+    color: #60a5fa;
+}
+
+/* When animating, hide the original cell to avoid duplication visual */
+.day-cell.animating-source {
+    opacity: 0 !important;
+    visibility: hidden;
+}
+.safe-pb {
+    padding-bottom: env(safe-area-inset-bottom, 20px);
+}
+/* Premium Toggle Switch */
+.mode-toggle {
+    background: rgba(30, 41, 59, 0.6); /* Glassy surface */
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 9999px;
+    padding: 4px;
+    display: flex;
+    position: relative;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+}
+.mode-btn {
+    z-index: 10;
+    flex: 1;
+    text-align: center;
+    padding: 8px 16px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border-radius: 9999px;
+    transition: color 0.3s ease;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+}
+.mode-bg {
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    left: 4px;
+    width: calc(50% - 4px);
+    background: var(--primary);
+    border-radius: 9999px;
+    box-shadow: 0 2px 8px rgba(225, 29, 72, 0.4);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* Shake Animation for Invalid Input */
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-4px); }
+    40% { transform: translateX(4px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+}
+.animate-shake {
+    animation: shake 0.4s ease-in-out;
+}
+
+/* Custom scrollbar for lists */
+.scrollbar-thin::-webkit-scrollbar { width: 4px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 2px; }
+/* Loader Animation */
+.spinner {
+    border: 3px solid rgba(255,255,255,0.3);
+    border-radius: 50%;
+    border-top: 3px solid #fff;
+    width: 20px;
+    height: 20px;
+    -webkit-animation: spin 1s linear infinite; /* Safari */
+    animation: spin 1s linear infinite;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+/* --- NEW: Scroll & Entry Animations --- */
+.reveal-item {
+    opacity: 0;
+    transform: scale(0.96) translateY(20px); /* Start slightly smaller and lower */
+    transition: opacity 0.8s cubic-bezier(0.2, 0.8, 0.2, 1), 
+                transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+    will-change: opacity, transform;
+}
+.reveal-item.is-visible {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+}
+/* Stagger delays for a natural flow */
+.delay-100 { transition-delay: 100ms; }
+.delay-200 { transition-delay: 200ms; }
+.delay-300 { transition-delay: 300ms; }
+
+/* Specific Calendar Staggering (Dynamic classes) */
+.reveal-stagger-1 { transition-delay: 50ms; }
+.reveal-stagger-2 { transition-delay: 100ms; }
+.reveal-stagger-3 { transition-delay: 150ms; }
+/* UPDATED: iOS-Style Morphing Transitions 
+   The modal container handles the backdrop fade.
+   The inner div handles the transform/geometry morph.
+*/
+#clipModal {
+    transition: backdrop-filter 0.5s ease, background-color 0.5s ease;
+    will-change: backdrop-filter, background-color;
+}
+
+#clipModal.modal-hidden {
+    backdrop-filter: blur(0px);
+    background-color: transparent;
+    pointer-events: none;
+}
+#clipModal > div {
+    /* We use a custom cubic-bezier that mimics iOS app open physics:
+       Starts fast, then has a long, smooth deceleration.
+    */
+    transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), 
+                opacity 0.5s cubic-bezier(0.2, 0.8, 0.2, 1),
+                border-radius 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+    transform-origin: top left; /* Crucial for the coordinate mapping */
+    will-change: transform, opacity, border-radius;
+}
+/* Fallback for simple fade if no source element */
+.simple-fade-enter {
+    animation: simpleFadeIn 0.3s ease-out forwards;
+}
+@keyframes simpleFadeIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+}
