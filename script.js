@@ -1637,12 +1637,14 @@ function setupCustomControls() {
 
     // Update UI State
     function updatePlayState() {
+        // Fix: Re-inject HTML to ensure Lucide renders correctly every time
+        const iconName = video.paused ? 'play' : 'pause';
+        DOM.btnTogglePlay.innerHTML = `<i data-lucide="${iconName}" class="w-5 h-5 fill-current"></i>`;
+
         if (video.paused) {
             DOM.centerPlayOverlay.style.opacity = '1';
-            DOM.iconSmallPlay.setAttribute('data-lucide', 'play');
         } else {
             DOM.centerPlayOverlay.style.opacity = '0';
-            DOM.iconSmallPlay.setAttribute('data-lucide', 'pause');
             // Trigger auto-hide if playing
             showControls();
         }
@@ -1747,6 +1749,7 @@ function setupCustomControls() {
 
     video.addEventListener('play', updatePlayState);
     video.addEventListener('pause', updatePlayState);
+    video.addEventListener('ended', updatePlayState);
     video.addEventListener('timeupdate', updateProgress);
 
     // Initial call
@@ -1758,7 +1761,10 @@ function resetVideoControls() {
     DOM.videoThumb.style.left = '0%';
     DOM.videoBuffered.style.width = '0%';
     DOM.centerPlayOverlay.style.opacity = '1';
-    DOM.iconSmallPlay.setAttribute('data-lucide', 'play');
+
+    // Reset Button HTML
+    DOM.btnTogglePlay.innerHTML = `<i data-lucide="play" class="w-5 h-5 fill-current"></i>`;
+
     DOM.customControls.style.opacity = '1';
     DOM.videoLoader.style.opacity = '0';
     lucide.createIcons();
