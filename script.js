@@ -230,7 +230,13 @@ const DOM = {
     videoProgress: document.getElementById('videoProgress'),
     videoBuffered: document.getElementById('videoBuffered'),
     videoThumb: document.getElementById('videoThumb'),
-    videoContainer: document.querySelector('.group\\/video')
+    videoThumb: document.getElementById('videoThumb'),
+    videoContainer: document.querySelector('.group\\/video'),
+
+    // Download Options
+    downloadOptionsMenu: document.getElementById('downloadOptionsMenu'),
+    btnDownloadOriginal: document.getElementById('btnDownloadOriginal'),
+    btnDownloadWatermark: document.getElementById('btnDownloadWatermark')
 };
 
 // --- INIT ---
@@ -731,9 +737,62 @@ async function openClipModal(clipOrDate, triggerEl = null) {
 
         // --- Attach Action Handlers ---
 
-        DOM.btnDownloadClip.onclick = async () => {
-            if (DOM.btnDownloadClip.disabled) return;
+        // --- DOWNLOAD HANDLER (UPDATED with Options) ---
+
+        // Toggle Menu
+        DOM.btnDownloadClip.onclick = (e) => {
+            e.stopPropagation();
             vibrate(HAPTIC.tap);
+            const menu = DOM.downloadOptionsMenu;
+
+            if (menu.classList.contains('hidden')) {
+                menu.classList.remove('hidden');
+                // Small delay to allow display:block to apply before transition
+                requestAnimationFrame(() => {
+                    menu.classList.remove('opacity-0', 'scale-95');
+                });
+            } else {
+                closeDownloadMenu();
+            }
+        };
+
+        // Close Menu Helper
+        function closeDownloadMenu() {
+            const menu = DOM.downloadOptionsMenu;
+            menu.classList.add('opacity-0', 'scale-95');
+            setTimeout(() => {
+                menu.classList.add('hidden');
+            }, 200);
+        }
+
+        // Global Close on Click Outside
+        // (We attach this once, but it's safe to re-attach or check target)
+        window.addEventListener('click', (e) => {
+            if (!DOM.downloadOptionsMenu.classList.contains('hidden')) {
+                if (!e.target.closest('#downloadOptionsMenu') && !e.target.closest('#btnDownloadClip')) {
+                    closeDownloadMenu();
+                }
+            }
+        });
+
+        // Option 1: Original (No Watermark)
+        DOM.btnDownloadOriginal.onclick = () => {
+            vibrate(HAPTIC.success);
+            closeDownloadMenu();
+
+            const safeMode = clip.mode || APP.mode;
+            const safeName = getSafeUsername();
+            // Append '_original' if desired, or keep standard name
+            const fileName = `${safeName}_${safeMode}_${formatDateDisplay(date)}.webm`;
+            downloadFile(clip.blob, fileName);
+        };
+
+        // Option 2: Watermarked (Existing Logic)
+        DOM.btnDownloadWatermark.onclick = async () => {
+            vibrate(HAPTIC.success);
+            closeDownloadMenu();
+
+            if (DOM.btnDownloadClip.disabled) return;
 
             DOM.btnDownloadClip.disabled = true;
             DOM.dlIconContainer.classList.add('hidden');
