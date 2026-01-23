@@ -831,6 +831,21 @@ function closeModal() {
         modalContent.style.padding = '0';
         modalContent.style.opacity = '1';
 
+        // COUNTER-SCALE FOR VIDEO (Object-Fit: Cover Behavior)
+        // Calculate the uniform scale we want (fitting the tightest dimension)
+        const targetScale = Math.max(scaleX, scaleY);
+        // Calculate how much we need to scale the child properties to achieve that target
+        // effectiveScale = parentScale * childScale
+        // childScale = targetScale / parentScale
+        const childScaleX = targetScale / scaleX;
+        const childScaleY = targetScale / scaleY;
+
+        // Apply to video wrapper to maintain content aspect ratio
+        DOM.videoContainer.style.transformOrigin = 'top left';
+        DOM.videoContainer.style.transition = 'transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1)';
+        DOM.videoContainer.style.transform = `scale(${childScaleX}, ${childScaleY})`;
+        modalContent.style.opacity = '1';
+
         // Fade out the black backdrop immediately though
         DOM.clipModal.classList.add('modal-hidden');
 
@@ -857,7 +872,13 @@ function closeModal() {
                 modalContent.style.opacity = '';
                 modalContent.style.borderRadius = '';
                 modalContent.style.transition = '';
+                modalContent.style.transition = '';
                 modalContent.style.padding = '';
+
+                // Reset Video Wrapper
+                DOM.videoContainer.style.transform = '';
+                DOM.videoContainer.style.transition = '';
+                DOM.videoContainer.style.transformOrigin = '';
 
                 activeTriggerEl = null;
                 resetDeleteBtn();
@@ -1767,6 +1788,11 @@ function resetVideoControls() {
 
     DOM.customControls.style.opacity = '1';
     DOM.videoLoader.style.opacity = '0';
+
+    // Safety Reset for Animation Transforms
+    DOM.videoContainer.style.transform = '';
+    DOM.videoContainer.style.transition = '';
+
     lucide.createIcons();
 }
 
