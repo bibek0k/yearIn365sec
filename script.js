@@ -843,22 +843,58 @@ async function openClipModal(clipOrDate, triggerEl = null) {
         }
     };
 
-    DOM.btnReplaceClip.onclick = () => {
-        vibrate(HAPTIC.tap);
-        closeModal(); // Morph back
-        setTimeout(() => {
-            APP.targetDate = date;
-            DOM.targetDateDisplay.textContent = formatDateDisplay(APP.targetDate);
-            DOM.targetIndicator.classList.remove('hidden');
-            DOM.statusText.textContent = `Ready for ${formatDateDisplay(APP.targetDate)}`;
-            showReadyState();
-        }, 400);
+    DOM.btnReplaceClip.onclick = async () => {
+        if (DOM.btnReplaceClip.dataset.state === 'confirm') {
+            vibrate(HAPTIC.destructive);
+
+            // 1. Delete the OLD clip
+            await deleteClip(date, APP.mode);
+
+            // 2. Animate Out
+            closeModal();
+            if (activeTriggerEl) activeTriggerEl.classList.remove('animating-source');
+
+            // 3. Prepare Camera for THAT SPECIFIC DAY
+            setTimeout(async () => {
+                // CRITICAL: Force target date to match the day we just deleted FIRST
+                APP.targetDate = date;
+
+                await renderCalendar(); // Refresh calendar, will now highlight the CORRECT target date
+
+                // Update UI to reflect this date
+                DOM.targetDateDisplay.textContent = formatDateDisplay(APP.targetDate);
+                DOM.targetIndicator.classList.remove('hidden');
+                DOM.statusText.textContent = `Ready for ${formatDateDisplay(APP.targetDate)}`;
+
+                // Ensure camera is ready
+                showReadyState();
+
+                resetReplaceBtn();
+            }, 400); // Wait for morph
+
+        } else {
+            // First Click: Show Confirmation !
+            vibrate(HAPTIC.warning);
+            DOM.btnReplaceClip.dataset.state = 'confirm';
+            // Use same style as delete confirmation but blue
+            DOM.btnReplaceClip.innerHTML = '<div class="w-4 h-4 flex items-center justify-center"><span class="text-blue-400 font-extrabold text-sm">!</span></div>';
+
+            setTimeout(() => {
+                if (DOM.btnReplaceClip.dataset.state === 'confirm') resetReplaceBtn();
+            }, 3000);
+        }
     };
 }
 
 function resetDeleteBtn() {
     DOM.btnDeleteClip.dataset.state = '';
     DOM.btnDeleteClip.innerHTML = '<i data-lucide="trash-2" class="w-4 h-4 group-hover:scale-110 transition-transform"></i>';
+    lucide.createIcons();
+}
+
+function resetReplaceBtn() {
+    DOM.btnReplaceClip.dataset.state = '';
+    DOM.btnReplaceClip.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>';
     lucide.createIcons();
 }
 
@@ -941,6 +977,7 @@ function closeModal() {
 
                 activeTriggerEl = null;
                 resetDeleteBtn();
+                resetReplaceBtn();
             }, 200); // Wait for opacity fade out
 
         }, 500); // Wait for morph transform
@@ -952,6 +989,7 @@ function closeModal() {
             DOM.clipModal.classList.add('hidden');
             DOM.clipModal.classList.remove('flex');
             resetDeleteBtn();
+            resetReplaceBtn();
         }, 400);
     }
 }
