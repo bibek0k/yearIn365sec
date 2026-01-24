@@ -1481,11 +1481,20 @@ async function startRecording() {
     const selectedMime = mimeOptions.find(type => MediaRecorder.isTypeSupported(type));
 
     try {
-        // FIX: Record directly from Camera Stream (Raw & Clean)
-        // This bypasses the canvas, ensuring no watermark, logo, or mirroring is baked in.
-        // It also simplifies audio handling as the stream already has tracks.
+        // REVERTED: Use Canvas Stream to support Mirroring
+        // This captures the canvas which has the "Self" mode mirror transform applied.
+        const canvasStream = DOM.processingCanvas.captureStream(30);
 
-        APP.mediaRecorder = new MediaRecorder(APP.cameraStream, {
+        if (APP.cameraStream.getAudioTracks().length > 0) {
+            APP.recAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const source = APP.recAudioCtx.createMediaStreamSource(APP.cameraStream);
+            const dest = APP.recAudioCtx.createMediaStreamDestination();
+            source.connect(dest);
+            const audioTrack = dest.stream.getAudioTracks()[0];
+            canvasStream.addTrack(audioTrack);
+        }
+
+        APP.mediaRecorder = new MediaRecorder(canvasStream, {
             mimeType: selectedMime,
             videoBitsPerSecond: 2500000
         });
@@ -1499,9 +1508,14 @@ async function startRecording() {
     };
 
     APP.mediaRecorder.onstop = async () => {
-        // FIX: Do NOT stop tracks here as we are using the live camera stream.
-        // We want the camera to keep running for the next preview/recording.
-        // Also removed APP.recAudioCtx cleanup as it's no longer used.
+        if (APP.mediaRecorder.stream) {
+            APP.mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        }
+
+        if (APP.recAudioCtx) {
+            try { await APP.recAudioCtx.close(); } catch (e) { }
+            APP.recAudioCtx = null;
+        }
 
         if (APP.flashEnabled) {
             if (APP.hasTorch) {
