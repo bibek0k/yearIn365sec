@@ -844,45 +844,29 @@ async function openClipModal(clipOrDate, triggerEl = null) {
     };
 
     DOM.btnReplaceClip.onclick = async () => {
-        if (DOM.btnReplaceClip.dataset.state === 'confirm') {
-            vibrate(HAPTIC.destructive);
+        vibrate(HAPTIC.tap);
 
-            // 1. Delete the OLD clip
-            await deleteClip(date, APP.mode);
+        // 1. Just animate out (Don't delete yet)
+        closeModal();
+        if (activeTriggerEl) activeTriggerEl.classList.remove('animating-source');
 
-            // 2. Animate Out
-            closeModal();
-            if (activeTriggerEl) activeTriggerEl.classList.remove('animating-source');
+        // 2. Prepare Camera for THIS day
+        setTimeout(async () => {
+            // CRITICAL: Force target date to match the day we are replacing
+            APP.targetDate = date;
 
-            // 3. Prepare Camera for THAT SPECIFIC DAY
-            setTimeout(async () => {
-                // CRITICAL: Force target date to match the day we just deleted FIRST
-                APP.targetDate = date;
+            await renderCalendar();
 
-                await renderCalendar(); // Refresh calendar, will now highlight the CORRECT target date
+            // Update UI 
+            DOM.targetDateDisplay.textContent = formatDateDisplay(APP.targetDate);
+            DOM.targetIndicator.classList.remove('hidden');
+            DOM.statusText.textContent = `Ready for ${formatDateDisplay(APP.targetDate)}`;
 
-                // Update UI to reflect this date
-                DOM.targetDateDisplay.textContent = formatDateDisplay(APP.targetDate);
-                DOM.targetIndicator.classList.remove('hidden');
-                DOM.statusText.textContent = `Ready for ${formatDateDisplay(APP.targetDate)}`;
+            // Ensure camera is ready
+            showReadyState();
 
-                // Ensure camera is ready
-                showReadyState();
-
-                resetReplaceBtn();
-            }, 400); // Wait for morph
-
-        } else {
-            // First Click: Show Confirmation !
-            vibrate(HAPTIC.warning);
-            DOM.btnReplaceClip.dataset.state = 'confirm';
-            // Use same style as delete confirmation but blue
-            DOM.btnReplaceClip.innerHTML = '<div class="w-4 h-4 flex items-center justify-center"><span class="text-blue-400 font-extrabold text-sm">!</span></div>';
-
-            setTimeout(() => {
-                if (DOM.btnReplaceClip.dataset.state === 'confirm') resetReplaceBtn();
-            }, 3000);
-        }
+            resetReplaceBtn();
+        }, 400);
     };
 }
 
@@ -1497,18 +1481,11 @@ async function startRecording() {
     const selectedMime = mimeOptions.find(type => MediaRecorder.isTypeSupported(type));
 
     try {
-        const canvasStream = DOM.processingCanvas.captureStream(30);
+        // FIX: Record directly from Camera Stream (Raw & Clean)
+        // This bypasses the canvas, ensuring no watermark, logo, or mirroring is baked in.
+        // It also simplifies audio handling as the stream already has tracks.
 
-        if (APP.cameraStream.getAudioTracks().length > 0) {
-            APP.recAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const source = APP.recAudioCtx.createMediaStreamSource(APP.cameraStream);
-            const dest = APP.recAudioCtx.createMediaStreamDestination();
-            source.connect(dest);
-            const audioTrack = dest.stream.getAudioTracks()[0];
-            canvasStream.addTrack(audioTrack);
-        }
-
-        APP.mediaRecorder = new MediaRecorder(canvasStream, {
+        APP.mediaRecorder = new MediaRecorder(APP.cameraStream, {
             mimeType: selectedMime,
             videoBitsPerSecond: 2500000
         });
@@ -1522,14 +1499,9 @@ async function startRecording() {
     };
 
     APP.mediaRecorder.onstop = async () => {
-        if (APP.mediaRecorder.stream) {
-            APP.mediaRecorder.stream.getTracks().forEach(track => track.stop());
-        }
-
-        if (APP.recAudioCtx) {
-            try { await APP.recAudioCtx.close(); } catch (e) { }
-            APP.recAudioCtx = null;
-        }
+        // FIX: Do NOT stop tracks here as we are using the live camera stream.
+        // We want the camera to keep running for the next preview/recording.
+        // Also removed APP.recAudioCtx cleanup as it's no longer used.
 
         if (APP.flashEnabled) {
             if (APP.hasTorch) {
